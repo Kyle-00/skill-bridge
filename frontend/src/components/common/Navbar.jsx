@@ -1,10 +1,8 @@
-import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { toggleSidebar } from '../../store/sidebarSlice';
 import { toggleTheme } from '../../store/themeSlice';
 import { logout } from '../../store/authSlice';
-import { setLanguage } from '../../store/languageSlice';
-import { FaBars, FaBell, FaMoon, FaSun, FaGlobe, FaSignOutAlt } from 'react-icons/fa';
+import { FaBars, FaBell, FaMoon, FaSun, FaSignOutAlt } from 'react-icons/fa';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 
 const Navbar = () => {
@@ -14,29 +12,12 @@ const Navbar = () => {
   const theme = useSelector((state) => state.theme.mode);
   const unread = useSelector((state) => state.notifications?.unread || 0);
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
-  const currentLang = useSelector((state) => state.language?.current || 'en');
-  const [langOpen, setLangOpen] = useState(false);
-
-  const languages = [
-    { code: 'en', name: 'English' },
-    { code: 'sw', name: 'Kiswahili' },
-    { code: 'fr', name: 'Français' },
-    { code: 'es', name: 'Español' },
-    { code: 'de', name: 'Deutsch' },
-    { code: 'pt', name: 'Português' },
-  ];
 
   const handleLogout = () => {
     dispatch(logout());
     navigate('/');
   };
 
-  const handleLanguageChange = (code) => {
-    dispatch(setLanguage(code));
-    setLangOpen(false);
-  };
-
-  // Navigation links
   const navLinks = [
     { path: '/find-work', label: 'Find Work' },
     { path: '/hire-talent', label: 'Hire Talent' },
@@ -56,6 +37,7 @@ const Navbar = () => {
               <button
                 onClick={() => dispatch(toggleSidebar())}
                 className="text-gold-600 hover:text-gold-800 transition"
+                aria-label="Toggle sidebar"
               >
                 <FaBars size={22} />
               </button>
@@ -66,7 +48,7 @@ const Navbar = () => {
             </Link>
           </div>
 
-          {/* Desktop nav links - centered with underlines */}
+          {/* Desktop nav links */}
           <div className="hidden md:flex items-center space-x-1">
             {navLinks.map((link) => (
               <Link
@@ -94,36 +76,11 @@ const Navbar = () => {
               {theme === 'dark' ? <FaSun size={18} /> : <FaMoon size={18} />}
             </button>
 
-            {/* Language dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setLangOpen(!langOpen)}
-                className="flex items-center gap-1 px-2 py-1 rounded-full hover:bg-gold-50 dark:hover:bg-gold-900/30 transition text-gold-600 text-sm"
-              >
-                <FaGlobe size={16} />
-                <span className="hidden sm:inline font-medium">{currentLang.toUpperCase()}</span>
-              </button>
-              {langOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-xl shadow-xl border border-gold-200/50 dark:border-gold-700/50 py-1 z-50">
-                  {languages.map((lang) => (
-                    <button
-                      key={lang.code}
-                      onClick={() => handleLanguageChange(lang.code)}
-                      className={`block w-full text-left px-4 py-2 text-sm hover:bg-gold-50 dark:hover:bg-gold-900/30 transition ${
-                        currentLang === lang.code ? 'text-gold-600 font-semibold' : 'text-gray-700 dark:text-gray-300'
-                      }`}
-                    >
-                      {lang.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
             {/* Notifications */}
             <Link
               to="/notifications"
               className="relative p-2 rounded-full hover:bg-gold-50 dark:hover:bg-gold-900/30 transition text-gold-600"
+              aria-label="Notifications"
             >
               <FaBell size={18} />
               {unread > 0 && (
@@ -138,6 +95,7 @@ const Navbar = () => {
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition"
+                aria-label="Logout"
               >
                 <FaSignOutAlt size={16} />
                 <span className="hidden sm:inline">Logout</span>
@@ -164,5 +122,4 @@ const Navbar = () => {
     </nav>
   );
 };
-
 export default Navbar;
