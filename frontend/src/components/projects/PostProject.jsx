@@ -59,7 +59,7 @@ const PostProject = () => {
               value={form.title}
               onChange={handleChange}
               className="w-full p-3 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 focus:ring-2 focus:ring-gold-400 outline-none"
-              placeholder="e.g., Build a React E‑commerce Site"
+              placeholder="e.g., Build a React E-commerce Site"
               required
             />
           </div>
