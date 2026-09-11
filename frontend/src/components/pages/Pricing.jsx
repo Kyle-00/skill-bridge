@@ -1,6 +1,24 @@
+import { useNavigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { FaCheck } from 'react-icons/fa';
 
 const Pricing = () => {
+  const navigate = useNavigate();
+  const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
+
+  const handlePlanAction = (planName) => {
+    if (planName === 'Enterprise') {
+      window.open('mailto:sales@skillbridge.com?subject=Enterprise%20Plan%20Inquiry', '_blank');
+      return;
+    }
+    
+    if (isAuthenticated) {
+      navigate('/dashboard');
+    } else {
+      navigate('/register');
+    }
+  };
+
   const plans = [
     {
       name: 'Free',
@@ -29,7 +47,7 @@ const Pricing = () => {
     <div className="p-6 max-w-7xl mx-auto">
       <h1 className="text-4xl font-bold text-gold-700 dark:text-gold-300 text-center mb-4">Pricing</h1>
       <p className="text-center text-gray-600 dark:text-gray-400 max-w-2xl mx-auto mb-12">
-        Transparent, fair pricing – no hidden fees.
+        Transparent, fair pricing - no hidden fees.
       </p>
 
       <div className="grid md:grid-cols-3 gap-8">
@@ -56,11 +74,14 @@ const Pricing = () => {
                 </li>
               ))}
             </ul>
-            <button className={`mt-6 w-full py-2 rounded-full transition ${
-              plan.recommended
-                ? 'bg-gold-600 text-white hover:bg-gold-700'
-                : 'border border-gold-600 text-gold-600 hover:bg-gold-50 dark:hover:bg-gold-900/30'
-            }`}>
+            <button
+              onClick={() => handlePlanAction(plan.name)}
+              className={`mt-6 w-full py-2 rounded-full transition ${
+                plan.recommended
+                  ? 'bg-gold-600 text-white hover:bg-gold-700'
+                  : 'border border-gold-600 text-gold-600 hover:bg-gold-50 dark:hover:bg-gold-900/30'
+              }`}
+            >
               Choose {plan.name}
             </button>
           </div>
