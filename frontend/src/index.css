@@ -1,30 +1,24 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
+/* Custom styles */
 body {
-  background-color: #ffffff;
-  color: #1f2937;
-  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 300ms;
-}
-
-@media (prefers-color-scheme: dark) {
-  body {
-    background-color: #000000;
-    color: #e5e7eb;
-  }
+  @apply bg-white dark:bg-black text-gray-800 dark:text-gray-200 transition-colors duration-300;
 }
 
 .glass {
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  background-color: rgba(255, 255, 255, 0.3);
-  border: 1px solid rgba(212, 161, 30, 0.5);
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  @apply backdrop-blur-md bg-white/30 dark:bg-black/30 border border-gold-300/50 shadow-lg;
 }
 
-@media (prefers-color-scheme: dark) {
-  .glass {
-    background-color: rgba(0, 0, 0, 0.3);
-  }
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+::-webkit-scrollbar-thumb {
+  background: #d4a11e;
+  border-radius: 10px;
 }
