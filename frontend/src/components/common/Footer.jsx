@@ -1,9 +1,24 @@
 import { Link } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { FaTwitter, FaLinkedin, FaGithub, FaYoutube } from 'react-icons/fa';
 
 const Footer = () => {
+  const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
+
+  // When logged in, show only copyright bar
+  if (isAuthenticated) {
+    return (
+      <footer className="bg-white/80 dark:bg-black/80 border-t border-gold-200/30 dark:border-gold-700/30 py-4 mt-auto">
+        <div className="max-w-7xl mx-auto px-4 text-center text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+          &copy; {new Date().getFullYear()} SkillBridge. All rights reserved.
+        </div>
+      </footer>
+    );
+  }
+
+  // Public pages – full footer
   return (
-    <footer className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-t border-gold-200/30 dark:border-gold-700/30 pt-12 pb-6">
+    <footer className="relative z-10 bg-white/80 dark:bg-black/80 backdrop-blur-sm border-t border-gold-200/30 dark:border-gold-700/30 pt-12 pb-6">
       <div className="max-w-7xl mx-auto px-4 grid grid-cols-2 md:grid-cols-4 gap-8">
         <div>
           <h3 className="text-lg font-bold text-gold-600 dark:text-gold-400">SkillBridge</h3>
@@ -53,4 +68,5 @@ const Footer = () => {
     </footer>
   );
 };
+
 export default Footer;
