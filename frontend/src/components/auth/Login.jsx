@@ -1,42 +1,107 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useDispatch } from 'react-redux';
 import { setCredentials } from '../../store/authSlice';
 import api from '../../api/axiosConfig';
 import { useNavigate, Link } from 'react-router-dom';
-import { FaGoogle } from 'react-icons/fa';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
+  // Google Sign-In button
+  useEffect(() => {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      console.error('VITE_GOOGLE_CLIENT_ID is not set in .env');
+      return;
+    }
+
+    const handleGoogleSuccess = async (response) => {
+      setLoading(true);
+      try {
+        const res = await api.post('accounts/google/verify/', {
+          token: response.credential,
+          role: 'both',
+        });
+        dispatch(setCredentials({
+          user: res.data.user,
+          token: res.data.access,
+          refresh: res.data.refresh,
+        }));
+        navigate(res.data.user?.is_superuser ? '/admin' : '/dashboard');
+      } catch {
+        setError('Google sign-in failed. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (window.google) {
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: handleGoogleSuccess,
+        cancel_on_tap_outside: false,
+      });
+      window.google.accounts.id.renderButton(
+        document.getElementById('googleSignInButton'),
+        {
+          theme: 'outline',
+          size: 'large',
+          width: '100%',
+          text: 'signin_with',
+          shape: 'pill',
+          logo_alignment: 'center',
+        }
+      );
+    }
+  }, [dispatch, navigate]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
+    setError('');
     try {
-      const res = await api.post('token/', { email, password });
-      const userRes = await api.get('accounts/users/me/', {
-        headers: { Authorization: `Bearer ${res.data.access}` },
-      });
-      dispatch(setCredentials({ user: userRes.data, token: res.data.access }));
-      navigate('/dashboard');
-    } catch {
-      alert('Login failed');
-    }
-  };
+      const loginRes = await api.post('accounts/login/', { email, password });
+      const accessToken = loginRes.data.access;
+      const refreshToken = loginRes.data.refresh;
 
-  const handleGoogleLogin = () => {
-    // Redirect to backend Google OAuth endpoint
-    window.location.href = 'http://localhost:8000/api/v1/accounts/google/';
+      const userRes = await api.get('accounts/profile/', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      dispatch(setCredentials({
+        user: userRes.data,
+        token: accessToken,
+        refresh: refreshToken,
+      }));
+
+      // Redirect based on role
+      navigate(userRes.data.is_superuser ? '/admin' : '/dashboard');
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Invalid email or password.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="max-w-md mx-auto mt-20 glass p-8 rounded-2xl shadow-xl">
       <h2 className="text-3xl font-bold text-gold-700 dark:text-gold-300 mb-6">Sign In</h2>
+
+      {error && (
+        <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg border border-red-200 dark:border-red-800">
+          {error}
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-4">
         <input
-          type="email"
-          placeholder="Email"
+          type="text"
+          placeholder="Email or Username"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className="w-full p-3 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 focus:ring-2 focus:ring-gold-400 outline-none"
@@ -50,8 +115,14 @@ const Login = () => {
           className="w-full p-3 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 focus:ring-2 focus:ring-gold-400 outline-none"
           required
         />
-        <button type="submit" className="w-full bg-gold-600 text-white py-3 rounded-lg hover:bg-gold-700 transition">
-          Login
+        <button
+          type="submit"
+          disabled={loading}
+          className={`w-full py-3 rounded-lg text-white font-semibold transition ${
+            loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-gold-600 hover:bg-gold-700'
+          }`}
+        >
+          {loading ? 'Signing in...' : 'Sign In'}
         </button>
       </form>
 
@@ -61,17 +132,14 @@ const Login = () => {
         <hr className="flex-1 border-gold-200 dark:border-gold-700" />
       </div>
 
-      <button
-        onClick={handleGoogleLogin}
-        className="w-full mt-4 flex items-center justify-center gap-2 border border-gold-600 text-gold-600 py-3 rounded-lg hover:bg-gold-50 dark:hover:bg-gold-900/30 transition"
-      >
-        <FaGoogle /> Sign in with Google
-      </button>
+      <div id="googleSignInButton" className="mt-4 w-full"></div>
 
       <p className="mt-4 text-center text-gray-600 dark:text-gray-400">
-        Don't have an account? <Link to="/register" className="text-gold-600 hover:underline">Register</Link>
+        Don't have an account?{' '}
+        <Link to="/register" className="text-gold-600 hover:underline">Register</Link>
       </p>
     </div>
   );
 };
+
 export default Login;
