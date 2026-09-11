@@ -16,16 +16,16 @@ const About = () => {
 
         <h2 className="text-2xl font-semibold text-gold-700 dark:text-gold-300 pt-4">Our Values</h2>
         <ul className="list-disc list-inside text-gray-700 dark:text-gray-300 space-y-1">
-          <li><strong>Inclusivity</strong> – Everyone deserves access to global opportunities.</li>
-          <li><strong>Trust</strong> – Secure escrow, verified identities, fair disputes.</li>
-          <li><strong>Innovation</strong> – AI matching and smart tools to empower users.</li>
-          <li><strong>Fairness</strong> – Low fees, no hidden charges, 0% client fee.</li>
+          <li><strong>Inclusivity</strong> - Everyone deserves access to global opportunities.</li>
+          <li><strong>Trust</strong> - Secure escrow, verified identities, fair disputes.</li>
+          <li><strong>Innovation</strong> - AI matching and smart tools to empower users.</li>
+          <li><strong>Fairness</strong> - Low fees, no hidden charges, 0% client fee.</li>
         </ul>
 
         <h2 className="text-2xl font-semibold text-gold-700 dark:text-gold-300 pt-4">Contact Us</h2>
         <div className="flex flex-wrap gap-6">
           <a
-            href="https://twitter.com/skillbridge"
+            href=""
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 text-gray-700 dark:text-gray-300 hover:text-gold-600 transition"
@@ -33,7 +33,7 @@ const About = () => {
             <FaTwitter size={20} /> Twitter
           </a>
           <a
-            href="https://linkedin.com/company/skillbridge"
+            href=""
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 text-gray-700 dark:text-gray-300 hover:text-gold-600 transition"
@@ -41,7 +41,7 @@ const About = () => {
             <FaLinkedin size={20} /> LinkedIn
           </a>
           <a
-            href="https://github.com/skillbridge"
+            href=""
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 text-gray-700 dark:text-gray-300 hover:text-gold-600 transition"
