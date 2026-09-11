@@ -3,16 +3,16 @@ import { FaRocket, FaHandshake, FaShieldAlt, FaGlobe } from 'react-icons/fa';
 const WhySkillBridge = () => {
   const values = [
     { icon: FaRocket, title: 'Innovation First', desc: 'We use AI to match talent with opportunities, reducing bias and saving time.' },
-    { icon: FaHandshake, title: 'Fairness', desc: 'Transparent fees (5‑10% freelancer, 0% client) and a clear dispute process.' },
+    { icon: FaHandshake, title: 'Fairness', desc: 'Transparent fees (5-10% freelancer, 0% client) and a clear dispute process.' },
     { icon: FaShieldAlt, title: 'Trust & Safety', desc: 'Escrow protection, identity verification, and fraud detection.' },
-    { icon: FaGlobe, title: 'Global Inclusion', desc: 'M‑Pesa, Stripe, crypto – we serve freelancers everywhere, especially in emerging markets.' },
+    { icon: FaGlobe, title: 'Global Inclusion', desc: 'M-Pesa, Stripe, crypto - we serve freelancers everywhere, especially in emerging markets.' },
   ];
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <h1 className="text-4xl font-bold text-gold-700 dark:text-gold-300 text-center mb-4">Why SkillBridge?</h1>
       <p className="text-center text-gray-600 dark:text-gray-400 max-w-2xl mx-auto mb-12">
-        We're building the future of freelancing – fair, smart, and accessible to everyone.
+        We're building the future of freelancing - fair, smart, and accessible to everyone.
       </p>
 
       <div className="grid md:grid-cols-2 gap-8">
