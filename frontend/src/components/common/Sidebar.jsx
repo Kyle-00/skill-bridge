@@ -1,20 +1,20 @@
-import { useSelector } from 'react-redux';
-import { NavLink } from 'react-router-dom';
+import { useSelector, useDispatch } from 'react-redux';
+import { NavLink, useNavigate } from 'react-router-dom';
 import {
   FaHome, FaUser, FaBriefcase, FaProjectDiagram, FaComments,
-  FaCog, FaSignOutAlt,
+  FaCog, FaSignOutAlt, FaWallet, FaUsers, FaUserShield,
 } from 'react-icons/fa';
-import { useDispatch } from 'react-redux';
 import { logout } from '../../store/authSlice';
 import { closeSidebar } from '../../store/sidebarSlice';
-import { useNavigate } from 'react-router-dom';
 
 const Sidebar = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const isOpen = useSelector(state => state.sidebar.isOpen);
-  const user = useSelector(state => state.auth.user);
+  const isOpen = useSelector((s) => s.sidebar.isOpen);
+  const user = useSelector((s) => s.auth.user);
+
   const role = user?.role || 'both';
+  const isAdmin = user?.is_superuser;
 
   const handleLogout = () => {
     dispatch(logout());
@@ -22,132 +22,91 @@ const Sidebar = () => {
     navigate('/');
   };
 
+  const linkClass = ({ isActive }) =>
+    `flex items-center gap-3 p-3 rounded-lg transition ${
+      isActive
+        ? 'bg-gold-100 dark:bg-gold-900 text-gold-700 dark:text-gold-300'
+        : 'hover:bg-gold-50 dark:hover:bg-gold-900/50 text-gray-700 dark:text-gray-300'
+    }`;
+
   return (
     <aside
-      className={`fixed top-16 left-0 h-full glass border-r border-gold-200 dark:border-gold-700 transition-transform duration-300 w-64 z-40 ${
+      className={`fixed top-16 left-0 h-[calc(100vh-4rem)] glass border-r border-gold-200 dark:border-gold-700 transition-transform duration-300 w-64 z-40 overflow-y-auto ${
         isOpen ? 'translate-x-0' : '-translate-x-full'
       }`}
     >
-      <div className="p-4 flex flex-col gap-1 mt-2 h-full overflow-y-auto">
-        {/* User Info */}
+      <div className="p-4 flex flex-col gap-1 h-full">
+        {/* User info */}
         <div className="flex items-center gap-3 p-3 mb-2 border-b border-gold-200 dark:border-gold-700">
-          <div className="w-10 h-10 rounded-full bg-gold-500 flex items-center justify-center text-white font-bold">
+          <div className="w-10 h-10 rounded-full bg-gold-500 flex items-center justify-center text-white font-bold shrink-0">
             {user?.username?.[0]?.toUpperCase() || 'U'}
           </div>
-          <div>
-            <div className="font-semibold text-gold-700 dark:text-gold-300">{user?.username || 'User'}</div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 capitalize">{role}</div>
+          <div className="min-w-0">
+            <div className="font-semibold text-gold-700 dark:text-gold-300 text-sm truncate">
+              {user?.username || 'User'}
+            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 capitalize">
+              {isAdmin ? 'Administrator' : role}
+            </div>
           </div>
         </div>
 
-        {/* Navigation Links */}
-        <NavLink
-          to="/dashboard"
-          className={({ isActive }) =>
-            `flex items-center gap-3 p-3 rounded-lg transition ${
-              isActive
-                ? 'bg-gold-100 dark:bg-gold-900 text-gold-700 dark:text-gold-300'
-                : 'hover:bg-gold-50 dark:hover:bg-gold-900/50 text-gray-700 dark:text-gray-300'
-            }`
-          }
-        >
+        {/* Admin section */}
+        {isAdmin && (
+          <>
+            <div className="px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wider text-red-500 dark:text-red-400">
+              Admin
+            </div>
+            <NavLink to="/admin" end className={linkClass}>
+              <FaUserShield /> Admin Dashboard
+            </NavLink>
+            <NavLink to="/admin/users" className={linkClass}>
+              <FaUsers /> Users
+            </NavLink>
+            <div className="border-t border-gold-200 dark:border-gold-700 my-2"></div>
+          </>
+        )}
+
+        {/* Common */}
+        <NavLink to="/dashboard" className={linkClass}>
           <FaHome /> Dashboard
         </NavLink>
 
-        {role !== 'client' && (
+        {/* Freelancer links */}
+        {(role === 'freelancer' || role === 'both') && (
           <>
-            <NavLink
-              to="/gigs"
-              className={({ isActive }) =>
-                `flex items-center gap-3 p-3 rounded-lg transition ${
-                  isActive
-                    ? 'bg-gold-100 dark:bg-gold-900 text-gold-700 dark:text-gold-300'
-                    : 'hover:bg-gold-50 dark:hover:bg-gold-900/50 text-gray-700 dark:text-gray-300'
-                }`
-              }
-            >
+            <NavLink to="/gigs" end className={linkClass}>
               <FaBriefcase /> My Gigs
             </NavLink>
-            <NavLink
-              to="/gigs/create"
-              className={({ isActive }) =>
-                `flex items-center gap-3 p-3 rounded-lg transition ${
-                  isActive
-                    ? 'bg-gold-100 dark:bg-gold-900 text-gold-700 dark:text-gold-300'
-                    : 'hover:bg-gold-50 dark:hover:bg-gold-900/50 text-gray-700 dark:text-gray-300'
-                }`
-              }
-            >
+            <NavLink to="/gigs/create" className={linkClass}>
               <FaBriefcase /> Create Gig
             </NavLink>
           </>
         )}
 
-        {role !== 'freelancer' && (
+        {/* Client links */}
+        {(role === 'client' || role === 'both') && (
           <>
-            <NavLink
-              to="/projects"
-              className={({ isActive }) =>
-                `flex items-center gap-3 p-3 rounded-lg transition ${
-                  isActive
-                    ? 'bg-gold-100 dark:bg-gold-900 text-gold-700 dark:text-gold-300'
-                    : 'hover:bg-gold-50 dark:hover:bg-gold-900/50 text-gray-700 dark:text-gray-300'
-                }`
-              }
-            >
+            <NavLink to="/projects" end className={linkClass}>
               <FaProjectDiagram /> Projects
             </NavLink>
-            <NavLink
-              to="/projects/post"
-              className={({ isActive }) =>
-                `flex items-center gap-3 p-3 rounded-lg transition ${
-                  isActive
-                    ? 'bg-gold-100 dark:bg-gold-900 text-gold-700 dark:text-gold-300'
-                    : 'hover:bg-gold-50 dark:hover:bg-gold-900/50 text-gray-700 dark:text-gray-300'
-                }`
-              }
-            >
+            <NavLink to="/projects/post" className={linkClass}>
               <FaProjectDiagram /> Post Project
             </NavLink>
           </>
         )}
 
-        <NavLink
-          to="/chat"
-          className={({ isActive }) =>
-            `flex items-center gap-3 p-3 rounded-lg transition ${
-              isActive
-                ? 'bg-gold-100 dark:bg-gold-900 text-gold-700 dark:text-gold-300'
-                : 'hover:bg-gold-50 dark:hover:bg-gold-900/50 text-gray-700 dark:text-gray-300'
-            }`
-          }
-        >
+        {/* Common continued */}
+        <NavLink to="/wallet" className={linkClass}>
+          <FaWallet /> Wallet
+        </NavLink>
+        <NavLink to="/messages" className={linkClass}>
           <FaComments /> Messages
         </NavLink>
-
-        <NavLink
-          to="/profile"
-          className={({ isActive }) =>
-            `flex items-center gap-3 p-3 rounded-lg transition ${
-              isActive
-                ? 'bg-gold-100 dark:bg-gold-900 text-gold-700 dark:text-gold-300'
-                : 'hover:bg-gold-50 dark:hover:bg-gold-900/50 text-gray-700 dark:text-gray-300'
-            }`
-          }
-        >
+        <NavLink to="/profile" className={linkClass}>
           <FaUser /> Profile
         </NavLink>
-
-        <NavLink
-          to="/settings"
-          className={({ isActive }) =>
-            `flex items-center gap-3 p-3 rounded-lg transition ${
-              isActive
-                ? 'bg-gold-100 dark:bg-gold-900 text-gold-700 dark:text-gold-300'
-                : 'hover:bg-gold-50 dark:hover:bg-gold-900/50 text-gray-700 dark:text-gray-300'
-            }`
-          }
-        >
+        <NavLink to="/settings" className={linkClass}>
           <FaCog /> Settings
         </NavLink>
 
@@ -163,4 +122,5 @@ const Sidebar = () => {
     </aside>
   );
 };
+
 export default Sidebar;
