@@ -5,8 +5,8 @@ const Contact = () => {
       <div className="glass p-8 rounded-3xl shadow-lg space-y-4">
         <p className="text-gray-600 dark:text-gray-400">Have questions or feedback? Reach out to us:</p>
         <div className="space-y-2">
-          <p><strong>Email:</strong> <a href="mailto:hello@skillbridge.com" className="text-gold-600 hover:underline">hello@skillbridge.com</a></p>
-          <p><strong>Twitter:</strong> <a href="https://twitter.com/skillbridge" target="_blank" rel="noopener noreferrer" className="text-gold-600 hover:underline">@skillbridge</a></p>
+          <p><strong>Email:</strong> <a href="" className="text-gold-600 hover:underline">hello@skillbridge.com</a></p>
+          <p><strong>Twitter:</strong> <a href="" target="_blank" rel="noopener noreferrer" className="text-gold-600 hover:underline">@skillbridge</a></p>
           <p><strong>Support Hours:</strong> Mon-Fri, 9:00 AM - 6:00 PM EAT</p>
         </div>
       </div>
