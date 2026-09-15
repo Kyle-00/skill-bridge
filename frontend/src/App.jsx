@@ -20,9 +20,17 @@ import AdminProjects from './components/admin/AdminProjects';
 import AdminOrders from './components/admin/AdminOrders';
 
 import GigList from './components/gigs/GigList';
+import GigDetail from './components/gigs/GigDetail';
 import CreateGig from './components/gigs/CreateGig';
+
 import ProjectList from './components/projects/ProjectList';
+import ProjectDetail from './components/projects/ProjectDetail';
+import MyProjectDetail from './components/projects/MyProjectDetail';
 import PostProject from './components/projects/PostProject';
+
+import Orders from './components/orders/Orders';
+import OrderDetail from './components/orders/OrderDetail';
+
 import ChatRoom from './components/chat/ChatRoom';
 import Wallet from './components/wallet/Wallet';
 import Deposit from './components/wallet/Deposit';
@@ -37,7 +45,9 @@ import FindWork from './components/pages/FindWork';
 import HireTalent from './components/pages/HireTalent';
 import WhySkillBridge from './components/pages/WhySkillBridge';
 import Pricing from './components/pages/Pricing';
+import PlanCheckout from './components/pages/PlanCheckout';
 import Resources from './components/pages/Resources';
+import ResourceDetail from './components/pages/ResourceDetail';
 import About from './components/pages/About';
 import HowItWorks from './components/pages/HowItWorks';
 import Blog from './components/pages/Blog';
@@ -63,7 +73,6 @@ function App() {
           >
             <main className="flex-1 pb-6">
               <Routes>
-                {/* Public */}
                 <Route path="/" element={<Landing />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
@@ -72,7 +81,16 @@ function App() {
                 <Route path="/hire-talent" element={<HireTalent />} />
                 <Route path="/why-skillbridge" element={<WhySkillBridge />} />
                 <Route path="/pricing" element={<Pricing />} />
+                <Route
+                  path="/pricing/:plan/checkout"
+                  element={
+                    <ProtectedRoute>
+                      <PlanCheckout />
+                    </ProtectedRoute>
+                  }
+                />
                 <Route path="/resources" element={<Resources />} />
+                <Route path="/resources/:slug" element={<ResourceDetail />} />
                 <Route path="/about" element={<About />} />
                 <Route path="/how-it-works" element={<HowItWorks />} />
                 <Route path="/blog" element={<Blog />} />
@@ -81,30 +99,34 @@ function App() {
 
                 <Route path="/chat" element={<Navigate to="/messages" replace />} />
 
-                {/* Protected */}
                 <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
 
-                {/* Admin */}
                 <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
                 <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
                 <Route path="/admin/gigs" element={<ProtectedRoute><AdminGigs /></ProtectedRoute>} />
                 <Route path="/admin/projects" element={<ProtectedRoute><AdminProjects /></ProtectedRoute>} />
                 <Route path="/admin/orders" element={<ProtectedRoute><AdminOrders /></ProtectedRoute>} />
 
-                {/* Wallet */}
+                <Route path="/gigs" element={<ProtectedRoute><GigList key="all" /></ProtectedRoute>} />
+                <Route path="/gigs/mine" element={<ProtectedRoute><GigList key="mine" mine /></ProtectedRoute>} />
+                <Route path="/gigs/create" element={<ProtectedRoute><CreateGig /></ProtectedRoute>} />
+                <Route path="/gigs/:id" element={<ProtectedRoute><GigDetail /></ProtectedRoute>} />
+
+                <Route path="/projects" element={<ProtectedRoute><ProjectList key="all" /></ProtectedRoute>} />
+                <Route path="/projects/mine" element={<ProtectedRoute><ProjectList key="mine" mine /></ProtectedRoute>} />
+                <Route path="/projects/post" element={<ProtectedRoute><PostProject /></ProtectedRoute>} />
+                <Route path="/projects/:id" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
+                <Route path="/projects/:id/manage" element={<ProtectedRoute><MyProjectDetail /></ProtectedRoute>} />
+
+                <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
+                <Route path="/orders/:id" element={<ProtectedRoute><OrderDetail /></ProtectedRoute>} />
+
                 <Route path="/wallet" element={<ProtectedRoute><Wallet /></ProtectedRoute>} />
                 <Route path="/wallet/deposit" element={<ProtectedRoute><Deposit /></ProtectedRoute>} />
                 <Route path="/wallet/withdraw" element={<ProtectedRoute><Withdraw /></ProtectedRoute>} />
                 <Route path="/wallet/transfer" element={<ProtectedRoute><Transfer /></ProtectedRoute>} />
                 <Route path="/wallet/security" element={<ProtectedRoute><WalletSecurity /></ProtectedRoute>} />
 
-                {/* Gigs / Projects */}
-                <Route path="/gigs" element={<ProtectedRoute><GigList /></ProtectedRoute>} />
-                <Route path="/gigs/create" element={<ProtectedRoute><CreateGig /></ProtectedRoute>} />
-                <Route path="/projects" element={<ProtectedRoute><ProjectList /></ProtectedRoute>} />
-                <Route path="/projects/post" element={<ProtectedRoute><PostProject /></ProtectedRoute>} />
-
-                {/* Misc */}
                 <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                 <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
                 <Route path="/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
