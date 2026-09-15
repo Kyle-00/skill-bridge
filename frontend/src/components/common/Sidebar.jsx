@@ -1,8 +1,9 @@
 import { useSelector, useDispatch } from 'react-redux';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
-  FaHome, FaUser, FaBriefcase, FaProjectDiagram, FaComments,
-  FaCog, FaSignOutAlt, FaWallet, FaUsers, FaUserShield,
+  FaHome, FaUser, FaBriefcase, FaComments, FaCog, FaSignOutAlt,
+  FaWallet, FaUsers, FaUserShield, FaPlus, FaSearch, FaList,
+  FaShoppingCart,
 } from 'react-icons/fa';
 import { logout } from '../../store/authSlice';
 import { closeSidebar } from '../../store/sidebarSlice';
@@ -23,11 +24,14 @@ const Sidebar = () => {
   };
 
   const linkClass = ({ isActive }) =>
-    `flex items-center gap-3 p-3 rounded-lg transition ${
+    `flex items-center gap-3 p-3 rounded-lg transition text-sm ${
       isActive
         ? 'bg-gold-100 dark:bg-gold-900 text-gold-700 dark:text-gold-300'
         : 'hover:bg-gold-50 dark:hover:bg-gold-900/50 text-gray-700 dark:text-gray-300'
     }`;
+
+  const sectionLabel =
+    'px-3 pt-3 pb-1 text-xs font-semibold uppercase tracking-wider text-gold-600 dark:text-gold-400';
 
   return (
     <aside
@@ -36,7 +40,6 @@ const Sidebar = () => {
       }`}
     >
       <div className="p-4 flex flex-col gap-1 h-full">
-        {/* User info */}
         <div className="flex items-center gap-3 p-3 mb-2 border-b border-gold-200 dark:border-gold-700">
           <div className="w-10 h-10 rounded-full bg-gold-500 flex items-center justify-center text-white font-bold shrink-0">
             {user?.username?.[0]?.toUpperCase() || 'U'}
@@ -51,7 +54,6 @@ const Sidebar = () => {
           </div>
         </div>
 
-        {/* Admin section */}
         {isAdmin && (
           <>
             <div className="px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wider text-red-500 dark:text-red-400">
@@ -63,40 +65,17 @@ const Sidebar = () => {
             <NavLink to="/admin/users" className={linkClass}>
               <FaUsers /> Users
             </NavLink>
-            <div className="border-t border-gold-200 dark:border-gold-700 my-2"></div>
+            <div className="border-t border-gold-200 dark:border-gold-700 my-2" />
           </>
         )}
 
-        {/* Common */}
+        <div className={sectionLabel}>Workspace</div>
         <NavLink to="/dashboard" className={linkClass}>
           <FaHome /> Dashboard
         </NavLink>
-
-        {/* Freelancer links */}
-        {(role === 'freelancer' || role === 'both') && (
-          <>
-            <NavLink to="/gigs" end className={linkClass}>
-              <FaBriefcase /> My Gigs
-            </NavLink>
-            <NavLink to="/gigs/create" className={linkClass}>
-              <FaBriefcase /> Create Gig
-            </NavLink>
-          </>
-        )}
-
-        {/* Client links */}
-        {(role === 'client' || role === 'both') && (
-          <>
-            <NavLink to="/projects" end className={linkClass}>
-              <FaProjectDiagram /> Projects
-            </NavLink>
-            <NavLink to="/projects/post" className={linkClass}>
-              <FaProjectDiagram /> Post Project
-            </NavLink>
-          </>
-        )}
-
-        {/* Common continued */}
+        <NavLink to="/orders" className={linkClass}>
+          <FaShoppingCart /> Orders
+        </NavLink>
         <NavLink to="/wallet" className={linkClass}>
           <FaWallet /> Wallet
         </NavLink>
@@ -110,7 +89,37 @@ const Sidebar = () => {
           <FaCog /> Settings
         </NavLink>
 
-        <div className="flex-1"></div>
+        {(role === 'freelancer' || role === 'both') && (
+          <>
+            <div className={sectionLabel}>Freelancer</div>
+            <NavLink to="/projects" end className={linkClass}>
+              <FaSearch /> Browse Projects
+            </NavLink>
+            <NavLink to="/gigs/mine" className={linkClass}>
+              <FaBriefcase /> My Gigs
+            </NavLink>
+            <NavLink to="/gigs/create" className={linkClass}>
+              <FaPlus /> Create Gig
+            </NavLink>
+          </>
+        )}
+
+        {(role === 'client' || role === 'both') && (
+          <>
+            <div className={sectionLabel}>Client</div>
+            <NavLink to="/gigs" end className={linkClass}>
+              <FaSearch /> Browse Gigs
+            </NavLink>
+            <NavLink to="/projects/mine" className={linkClass}>
+              <FaList /> My Projects
+            </NavLink>
+            <NavLink to="/projects/post" className={linkClass}>
+              <FaPlus /> Post Project
+            </NavLink>
+          </>
+        )}
+
+        <div className="flex-1" />
 
         <button
           onClick={handleLogout}
