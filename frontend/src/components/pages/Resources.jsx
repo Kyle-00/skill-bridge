@@ -1,62 +1,52 @@
+import { Link } from 'react-router-dom';
 import { FaBook, FaVideo, FaFileAlt, FaExternalLinkAlt } from 'react-icons/fa';
+import { RESOURCES_DATA } from './resourcesData';
+
+const iconMap = {
+  book: FaBook,
+  video: FaVideo,
+  file: FaFileAlt,
+};
 
 const Resources = () => {
-  const resources = [
-    {
-      icon: FaBook,
-      title: 'How to Write the Perfect Proposal',
-      desc: 'A guide to winning your first gigs.',
-      link: '/blog/how-to-write-perfect-proposal',
-    },
-    {
-      icon: FaVideo,
-      title: 'Video Tutorial: Getting Started',
-      desc: 'Walkthrough of the platform.',
-      link: '/blog/video-tutorial',
-    },
-    {
-      icon: FaFileAlt,
-      title: 'Freelancer Tax Guide',
-      desc: 'Understand your tax obligations.',
-      link: '/blog/freelancer-tax-guide',
-    },
-    {
-      icon: FaBook,
-      title: 'Client Handbook: Hiring Right',
-      desc: 'How to evaluate and hire top talent.',
-      link: '/blog/client-handbook',
-    },
-  ];
-
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <h1 className="text-4xl font-bold text-gold-700 dark:text-gold-300 text-center mb-4">Resources</h1>
+      <h1 className="text-4xl font-bold text-gold-700 dark:text-gold-300 text-center mb-4">
+        Resources
+      </h1>
       <p className="text-center text-gray-600 dark:text-gray-400 max-w-2xl mx-auto mb-12">
         Learn, grow, and succeed with SkillBridge.
       </p>
 
       <div className="grid md:grid-cols-2 gap-8">
-        {resources.map((item, i) => (
-          <div key={i} className="glass p-6 rounded-2xl shadow-lg flex gap-4 items-start hover:shadow-xl transition">
-            <div className="text-3xl text-gold-500 shrink-0"><item.icon /></div>
-            <div className="flex-1">
-              <h3 className="text-xl font-semibold text-gold-800 dark:text-gold-200">{item.title}</h3>
-              <p className="text-gray-600 dark:text-gray-400 mt-1">{item.desc}</p>
-              <a
-                href={item.link}
-                className="inline-flex items-center gap-1 text-gold-600 hover:underline text-sm mt-2"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Read more <FaExternalLinkAlt size={12} />
-              </a>
+        {RESOURCES_DATA.map((item) => {
+          const Icon = iconMap[item.icon] || FaBook;
+          return (
+            <div
+              key={item.slug}
+              className="glass p-6 rounded-2xl shadow-lg flex gap-4 items-start hover:shadow-xl transition"
+            >
+              <div className="text-3xl text-gold-500 shrink-0">
+                <Icon />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-xl font-semibold text-gold-800 dark:text-gold-200">
+                  {item.title}
+                </h3>
+                <p className="text-gray-600 dark:text-gray-400 mt-1">{item.desc}</p>
+                <Link
+                  to={`/resources/${item.slug}`}
+                  className="inline-flex items-center gap-1 text-gold-600 hover:underline text-sm mt-2"
+                >
+                  Read more <FaExternalLinkAlt size={12} />
+                </Link>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
-
-      {/* If you want a blog page, you can create a <Blog /> component and route it */}
     </div>
   );
 };
+
 export default Resources;
