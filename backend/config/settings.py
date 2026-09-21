@@ -8,11 +8,28 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-default-key-for-dev')
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+# ---------------------------------------------------------------------------
+# Core security
+# ---------------------------------------------------------------------------
+SECRET_KEY = os.environ.get(
+    'SECRET_KEY',
+    'django-insecure-change-me-in-production'
+)
+DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
-# Application definition
+# Comma-separated list from env, plus the default local hosts
+ALLOWED_HOSTS = os.environ.get(
+    'ALLOWED_HOSTS',
+    'localhost,127.0.0.1'
+).split(',')
+
+# Add any extra hosts such as .onrender.com via the env var
+ALLOWED_HOSTS = [h.strip() for h in ALLOWED_HOSTS if h.strip()]
+
+
+# ---------------------------------------------------------------------------
+# Applications
+# ---------------------------------------------------------------------------
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -26,7 +43,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_filters',
     'channels',
-    # Local
+    # Local apps
     'accounts',
     'gigs',
     'projects',
@@ -38,9 +55,14 @@ INSTALLED_APPS = [
     'wallet',
 ]
 
+
+# ---------------------------------------------------------------------------
+# Middleware
+# ---------------------------------------------------------------------------
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',   # serves static files in prod
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -48,6 +70,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
 
 ROOT_URLCONF = 'config.urls'
 
@@ -70,15 +93,29 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
+
+# ---------------------------------------------------------------------------
 # Database
+# ---------------------------------------------------------------------------
+# In production Render provides DATABASE_URL. Locally it falls back to .env.
 DATABASES = {
-    'default': dj_database_url.config(default=os.getenv('DATABASE_URL', 'sqlite:///db.sqlite3'))
+    'default': dj_database_url.config(
+        default=os.getenv(
+            'DATABASE_URL',
+            'postgres://skill_user:12345678@localhost:5433/skillbridge_db'
+        ),
+        conn_max_age=600,
+        ssl_require=not DEBUG,   # Render requires SSL in production
+    )
 }
 
 # Custom user model
 AUTH_USER_MODEL = 'accounts.User'
 
-# Django REST Framework
+
+# ---------------------------------------------------------------------------
+# REST framework
+# ---------------------------------------------------------------------------
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
@@ -91,10 +128,13 @@ REST_FRAMEWORK = {
     ),
 }
 
-# JWT settings – longer lifetimes so users stay logged in
+
+# ---------------------------------------------------------------------------
+# JWT
+# ---------------------------------------------------------------------------
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),      # access token lasts 1 day
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),    # refresh token lasts 30 days
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
     'ROTATE_REFRESH_TOKENS': False,
     'BLACKLIST_AFTER_ROTATION': False,
     'UPDATE_LAST_LOGIN': True,
@@ -104,31 +144,45 @@ SIMPLE_JWT = {
     'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
-    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+    'AUTH_TOKEN_CLASSES': (
+        'rest_framework_simplejwt.tokens.AccessToken',
+    ),
     'TOKEN_TYPE_CLAIM': 'token_type',
 }
 
-# CORS – allow the React frontend
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-]
+
+# ---------------------------------------------------------------------------
+# CORS
+# ---------------------------------------------------------------------------
+# Local frontend plus production frontend (comma-separated in env)
+_cors_env = os.environ.get(
+    'CORS_ALLOWED_ORIGINS',
+    'http://localhost:5173,http://127.0.0.1:5173'
+)
+CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_env.split(',') if o.strip()]
 CORS_ALLOW_CREDENTIALS = True
 
-CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-]
+# CSRF trusted origins must match the CORS origins in production
+CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
 
+
+# ---------------------------------------------------------------------------
 # Google OAuth
+# ---------------------------------------------------------------------------
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET', '')
 
+
+# ---------------------------------------------------------------------------
 # Stripe
+# ---------------------------------------------------------------------------
 STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY', '')
 STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', '')
 
+
+# ---------------------------------------------------------------------------
 # M-Pesa
+# ---------------------------------------------------------------------------
 MPESA_CONSUMER_KEY = os.getenv('MPESA_CONSUMER_KEY', '')
 MPESA_CONSUMER_SECRET = os.getenv('MPESA_CONSUMER_SECRET', '')
 MPESA_SHORTCODE = os.getenv('MPESA_SHORTCODE', '174379')
@@ -136,7 +190,11 @@ MPESA_PASSKEY = os.getenv('MPESA_PASSKEY', '')
 MPESA_CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', '')
 MPESA_BASE_URL = os.getenv('MPESA_BASE_URL', 'https://sandbox.safaricom.co.ke')
 
-# Channels + Redis (for WebSockets)
+
+# ---------------------------------------------------------------------------
+# Channels (WebSockets)
+# ---------------------------------------------------------------------------
+# Render provides REDIS_URL for both Channels and Celery
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
@@ -146,14 +204,42 @@ CHANNEL_LAYERS = {
     },
 }
 
+
+# ---------------------------------------------------------------------------
 # Internationalisation
+# ---------------------------------------------------------------------------
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-# Static & Media
-STATIC_URL = 'static/'
+
+# ---------------------------------------------------------------------------
+# Static and media files
+# ---------------------------------------------------------------------------
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# WhiteNoise compresses and caches static files in production
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+
+# ---------------------------------------------------------------------------
+# Production security (only enforced when DEBUG=False)
+# ---------------------------------------------------------------------------
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
+
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
