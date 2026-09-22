@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 
 
 class Command(BaseCommand):
-    help = 'Create a superuser if one does not already exist'
+    help = 'Create or update the superuser on every deploy'
 
     def handle(self, *args, **options):
         User = get_user_model()
@@ -22,9 +22,18 @@ class Command(BaseCommand):
             )
             return
 
-        if User.objects.filter(username=username).exists():
+        user = User.objects.filter(username=username).first()
+
+        if user:
+            # Always sync the password, email, and admin flags
+            user.set_password(password)
+            user.email = email
+            user.is_superuser = True
+            user.is_staff = True
+            user.is_active = True
+            user.save()
             self.stdout.write(
-                self.style.SUCCESS(f'Superuser "{username}" already exists. Skipping.')
+                self.style.SUCCESS(f'Superuser "{username}" updated.')
             )
             return
 
