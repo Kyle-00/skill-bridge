@@ -1,3 +1,4 @@
+import os
 import requests
 from django.conf import settings
 from django.contrib.auth import authenticate
@@ -10,12 +11,17 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import User, FreelancerProfile, ClientProfile
 from .serializers import (
-    UserSerializer, RegisterSerializer, GoogleVerifySerializer,
-    FreelancerProfileSerializer, ClientProfileSerializer,
+    UserSerializer,
+    RegisterSerializer,
+    GoogleVerifySerializer,
+    FreelancerProfileSerializer,
+    ClientProfileSerializer,
 )
 
 
-# -------------------- LOGIN (email or username) --------------------
+# ---------------------------------------------------------------------------
+# Login: accepts email OR username + password
+# ---------------------------------------------------------------------------
 class EmailOrUsernameTokenObtainPairSerializer(TokenObtainPairSerializer):
     username_field = 'email'
 
@@ -24,7 +30,9 @@ class EmailOrUsernameTokenObtainPairSerializer(TokenObtainPairSerializer):
         password = attrs.get('password')
 
         if not identifier or not password:
-            raise serializers.ValidationError('Email/username and password required.')
+            raise serializers.ValidationError(
+                'Email/username and password are required.'
+            )
 
         user = User.objects.filter(email__iexact=identifier).first()
         if not user:
@@ -36,14 +44,19 @@ class EmailOrUsernameTokenObtainPairSerializer(TokenObtainPairSerializer):
             raise serializers.ValidationError('Account is disabled.')
 
         refresh = RefreshToken.for_user(user)
-        return {'refresh': str(refresh), 'access': str(refresh.access_token)}
+        return {
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+        }
 
 
 class EmailOrUsernameTokenObtainPairView(TokenObtainPairView):
     serializer_class = EmailOrUsernameTokenObtainPairSerializer
 
 
-# -------------------- REGISTER --------------------
+# ---------------------------------------------------------------------------
+# Registration
+# ---------------------------------------------------------------------------
 class RegisterView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -64,15 +77,20 @@ class RegisterView(APIView):
                 pass
 
             refresh = RefreshToken.for_user(user)
-            return Response({
-                'user': UserSerializer(user).data,
-                'access': str(refresh.access_token),
-                'refresh': str(refresh),
-            }, status=status.HTTP_201_CREATED)
+            return Response(
+                {
+                    'user': UserSerializer(user).data,
+                    'access': str(refresh.access_token),
+                    'refresh': str(refresh),
+                },
+                status=status.HTTP_201_CREATED,
+            )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# -------------------- GOOGLE --------------------
+# ---------------------------------------------------------------------------
+# Google Sign-In / Sign-Up
+# ---------------------------------------------------------------------------
 class GoogleVerifyView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -86,10 +104,14 @@ class GoogleVerifyView(APIView):
 
         try:
             response = requests.get(
-                f'https://oauth2.googleapis.com/tokeninfo?id_token={token}', timeout=10
+                f'https://oauth2.googleapis.com/tokeninfo?id_token={token}',
+                timeout=10,
             )
             if response.status_code != 200:
-                return Response({'error': 'Invalid Google token.'}, status=400)
+                return Response(
+                    {'error': 'Invalid Google token.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             payload = response.json()
             google_id = payload.get('sub')
@@ -99,33 +121,43 @@ class GoogleVerifyView(APIView):
             last_name = name[1] if len(name) > 1 else ''
 
             if not google_id or not email:
-                return Response({'error': 'Missing user info.'}, status=400)
+                return Response(
+                    {'error': 'Missing user info from Google.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             user = User.objects.filter(google_id=google_id).first()
             if not user:
                 user = User.objects.filter(email__iexact=email).first()
                 if user:
                     user.google_id = google_id
-                    user.is_verified = True
+                    if not user.is_verified:
+                        user.is_verified = True
                     user.save()
                 else:
-                    base = email.split('@')[0]
-                    username = base
+                    base_username = email.split('@')[0]
+                    username = base_username
                     counter = 1
                     while User.objects.filter(username=username).exists():
-                        username = f'{base}{counter}'
+                        username = f'{base_username}{counter}'
                         counter += 1
+
                     user = User.objects.create_user(
-                        username=username, email=email,
-                        first_name=first_name, last_name=last_name,
-                        role=role, google_id=google_id,
-                        password=None, is_verified=True,
+                        username=username,
+                        email=email,
+                        first_name=first_name,
+                        last_name=last_name,
+                        role=role,
+                        google_id=google_id,
+                        password=None,
+                        is_verified=True,
                     )
 
             if user.role in ('freelancer', 'both'):
                 FreelancerProfile.objects.get_or_create(user=user)
             if user.role in ('client', 'both'):
                 ClientProfile.objects.get_or_create(user=user)
+
             try:
                 from wallet.models import Wallet
                 Wallet.objects.get_or_create(user=user)
@@ -133,17 +165,29 @@ class GoogleVerifyView(APIView):
                 pass
 
             refresh = RefreshToken.for_user(user)
-            return Response({
-                'user': UserSerializer(user).data,
-                'access': str(refresh.access_token),
-                'refresh': str(refresh),
-            })
+            return Response(
+                {
+                    'user': UserSerializer(user).data,
+                    'access': str(refresh.access_token),
+                    'refresh': str(refresh),
+                }
+            )
 
+        except requests.RequestException as e:
+            return Response(
+                {'error': f'Google verification failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
         except Exception as e:
-            return Response({'error': str(e)}, status=500)
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
-# -------------------- PROFILE --------------------
+# ---------------------------------------------------------------------------
+# Profile: current user
+# ---------------------------------------------------------------------------
 class UserProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -155,9 +199,12 @@ class UserProfileView(APIView):
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
-        return Response(serializer.errors, status=400)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+# ---------------------------------------------------------------------------
+# Freelancer profile
+# ---------------------------------------------------------------------------
 class FreelancerProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -167,13 +214,18 @@ class FreelancerProfileView(APIView):
 
     def put(self, request):
         profile, _ = FreelancerProfile.objects.get_or_create(user=request.user)
-        s = FreelancerProfileSerializer(profile, data=request.data, partial=True)
-        if s.is_valid():
-            s.save()
-            return Response(s.data)
-        return Response(s.errors, status=400)
+        serializer = FreelancerProfileSerializer(
+            profile, data=request.data, partial=True
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+# ---------------------------------------------------------------------------
+# Client profile
+# ---------------------------------------------------------------------------
 class ClientProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -183,14 +235,18 @@ class ClientProfileView(APIView):
 
     def put(self, request):
         profile, _ = ClientProfile.objects.get_or_create(user=request.user)
-        s = ClientProfileSerializer(profile, data=request.data, partial=True)
-        if s.is_valid():
-            s.save()
-            return Response(s.data)
-        return Response(s.errors, status=400)
+        serializer = ClientProfileSerializer(
+            profile, data=request.data, partial=True
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# -------------------- DELETE ACCOUNT --------------------
+# ---------------------------------------------------------------------------
+# Delete account
+# ---------------------------------------------------------------------------
 class DeleteAccountView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -200,16 +256,23 @@ class DeleteAccountView(APIView):
 
         if not password:
             return Response({'error': 'Password is required.'}, status=400)
+
         if not user.check_password(password):
             return Response({'error': 'Incorrect password.'}, status=400)
+
         if user.is_superuser:
-            return Response({'error': 'Superuser accounts cannot be deleted.'}, status=400)
+            return Response(
+                {'error': 'Superuser accounts cannot be deleted this way.'},
+                status=400,
+            )
 
         user.delete()
         return Response({'status': 'Account deleted successfully.'})
 
 
-# -------------------- ADMIN: USER MANAGEMENT --------------------
+# ---------------------------------------------------------------------------
+# Admin user management
+# ---------------------------------------------------------------------------
 class AdminUserListView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
@@ -239,7 +302,46 @@ class AdminUserDetailView(APIView):
             user = User.objects.get(pk=pk)
         except User.DoesNotExist:
             return Response({'error': 'User not found'}, status=404)
+
         if user.is_superuser:
             return Response({'error': 'Cannot delete superuser'}, status=400)
+
         user.delete()
         return Response({'status': 'deleted'})
+
+
+# ---------------------------------------------------------------------------
+# Public list of freelancers (used by Hire Talent page)
+# ---------------------------------------------------------------------------
+class FreelancerListView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        freelancers = User.objects.filter(
+            role__in=['freelancer', 'both']
+        ).select_related('freelancer_profile')
+
+        data = []
+        for u in freelancers:
+            profile = getattr(u, 'freelancer_profile', None)
+            gigs_count = u.gigs.filter(is_active=True).count()
+
+            data.append({
+                'id': u.id,
+                'username': u.username,
+                'first_name': u.first_name,
+                'last_name': u.last_name,
+                'display_name': (f'{u.first_name} {u.last_name}'.strip()) or u.username,
+                'title': profile.title if profile else '',
+                'overview': profile.overview if profile else '',
+                'skills': profile.skills if profile and profile.skills else [],
+                'hourly_rate': (
+                    float(profile.hourly_rate)
+                    if profile and profile.hourly_rate
+                    else None
+                ),
+                'gigs_count': gigs_count,
+                'trust_score': u.trust_score,
+            })
+
+        return Response(data)
