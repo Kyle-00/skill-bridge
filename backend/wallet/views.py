@@ -26,7 +26,7 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 # =============================================================
 # HELPER: Auto-expire stale pending transactions
 # =============================================================
-def expire_stale_pending_transactions(minutes=10):
+def expire_stale_pending_transactions(minutes=5):
     """
     Marks any pending transaction older than `minutes` as failed.
     Prevents transactions from being stuck in 'pending' forever
@@ -497,7 +497,10 @@ class MpesaCallbackView(APIView):
         checkout_id = stk_callback.get('CheckoutRequestID')
         result_desc = stk_callback.get('ResultDesc', '')
 
-        print(f'M-Pesa callback: code={result_code} id={checkout_id} desc={result_desc}')
+        print('=== M-Pesa callback received ===')
+        print(f'  ResultCode: {result_code}')
+        print(f'  ResultDesc: {result_desc}')
+        print(f'  CheckoutRequestID: {checkout_id}')
 
         if result_code == 0 and checkout_id:
             try:
