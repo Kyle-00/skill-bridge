@@ -31,6 +31,7 @@ ALLOWED_HOSTS = [h.strip() for h in ALLOWED_HOSTS if h.strip()]
 # Applications
 # ---------------------------------------------------------------------------
 INSTALLED_APPS = [
+    'daphne',      
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
