@@ -16,19 +16,13 @@ const ProjectList = ({ mine = false }) => {
   useEffect(() => {
     let cancelled = false;
 
-    const load = async () => {
-      try {
-        const url = isMine && user?.id ? `projects/?client=${user.id}` : 'projects/';
-        const res = await api.get(url);
-        if (!cancelled) setProjects(res.data || []);
-      } catch {
-        if (!cancelled) setProjects([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
+    const url = isMine && user?.id ? `projects/?client=${user.id}` : 'projects/';
 
-    load();
+    api.get(url)
+      .then((res) => { if (!cancelled) setProjects(res.data || []); })
+      .catch(() => { if (!cancelled) setProjects([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+
     return () => { cancelled = true; };
   }, [isMine, user]);
 
@@ -93,8 +87,8 @@ const ProjectList = ({ mine = false }) => {
       {filtered.length === 0 ? (
         <div className="glass p-8 rounded-2xl text-center text-gray-500 dark:text-gray-400">
           {isMine
-            ? "You have not posted any projects yet."
-            : "No open projects right now."}
+            ? 'You have not posted any projects yet.'
+            : 'No open projects right now.'}
           {isMine && (
             <div className="mt-4">
               <Link
@@ -123,7 +117,9 @@ const ProjectList = ({ mine = false }) => {
                   {p.status.replace('_', ' ')}
                 </span>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{p.category}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {p.category}
+              </p>
               <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 flex-1 line-clamp-3">
                 {p.description}
               </p>
@@ -134,16 +130,26 @@ const ProjectList = ({ mine = false }) => {
                 </p>
               )}
 
-              <div className="flex items-center justify-between mt-4 pt-3 border-t border-gold-200 dark:border-gold-800">
+              <div className="flex items-center justify-between mt-4 pt-3 border-t border-gold-200 dark:border-gold-800 gap-2 flex-wrap">
                 <span className="text-gold-600 font-bold text-sm">
                   ${p.budget_min}-${p.budget_max}
                 </span>
-                <Link
-                  to={isMine ? `/projects/${p.id}/manage` : `/projects/${p.id}`}
-                  className="text-sm bg-gold-600 text-white px-4 py-1.5 rounded-full hover:bg-gold-700 transition"
-                >
-                  {isMine ? 'Manage' : 'View'}
-                </Link>
+                <div className="flex gap-2 flex-wrap">
+                  {isMine && (
+                    <Link
+                      to={`/projects/${p.id}/edit`}
+                      className="text-xs border border-gold-600 text-gold-600 px-3 py-1.5 rounded-full hover:bg-gold-50 dark:hover:bg-gold-900/30 transition"
+                    >
+                      Edit
+                    </Link>
+                  )}
+                  <Link
+                    to={isMine ? `/projects/${p.id}/manage` : `/projects/${p.id}`}
+                    className="text-xs bg-gold-600 text-white px-3 py-1.5 rounded-full hover:bg-gold-700 transition"
+                  >
+                    {isMine ? 'Manage' : 'View'}
+                  </Link>
+                </div>
               </div>
             </div>
           ))}
