@@ -32,6 +32,19 @@ def get_or_create_room(user_a, user_b):
     return room
 
 
+def notify(recipient, actor, verb, message, target=''):
+    try:
+        Notification.objects.create(
+            recipient=recipient,
+            actor=actor,
+            verb=verb,
+            message=message,
+            target=target,
+        )
+    except Exception as e:
+        print(f'Notification failed: {e}')
+
+
 class ProjectViewSet(viewsets.ModelViewSet):
     queryset = Project.objects.all().order_by('-created_at')
     serializer_class = ProjectSerializer
@@ -43,8 +56,11 @@ class ProjectViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         client_id = self.request.query_params.get('client')
+        status = self.request.query_params.get('status')
         if client_id:
             queryset = queryset.filter(client_id=client_id)
+        if status:
+            queryset = queryset.filter(status=status)
         return queryset
 
     def perform_create(self, serializer):
@@ -69,17 +85,11 @@ class ProjectViewSet(viewsets.ModelViewSet):
             )
 
         if project.status != 'open':
-            return Response(
-                {'error': 'Project is no longer open'},
-                status=400,
-            )
+            return Response({'error': 'Project is no longer open'}, status=400)
 
         proposal_id = request.data.get('proposal_id')
         if not proposal_id:
-            return Response(
-                {'error': 'proposal_id is required'},
-                status=400,
-            )
+            return Response({'error': 'proposal_id is required'}, status=400)
 
         proposal = get_object_or_404(Proposal, id=proposal_id, project=project)
 
@@ -87,7 +97,6 @@ class ProjectViewSet(viewsets.ModelViewSet):
             proposal.status = 'accepted'
             proposal.save()
 
-            # Auto-reject all other proposals on this project
             project.proposals.exclude(id=proposal.id).update(status='rejected')
 
             project.status = 'in_progress'
@@ -108,10 +117,13 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
             room = get_or_create_room(request.user, proposal.freelancer)
 
-            Notification.objects.create(
+            client_name = request.user.get_full_name() or request.user.username
+
+            notify(
                 recipient=proposal.freelancer,
                 actor=request.user,
                 verb='proposal_accepted',
+                message=f'{client_name} accepted your proposal for "{project.title}"',
                 target=f'/orders/{order.id}',
             )
 
@@ -164,12 +176,16 @@ class ProposalViewSet(viewsets.ModelViewSet):
             project=project,
         )
 
-        Notification.objects.create(
+        freelancer_name = self.request.user.get_full_name() or self.request.user.username
+
+        notify(
             recipient=project.client,
             actor=self.request.user,
-            verb='new_proposal',
+            verb='proposal_received',
+            message=f'{freelancer_name} submitted a proposal on "{project.title}"',
             target=f'/projects/{project.id}/manage',
         )
+
         return proposal
 
 
