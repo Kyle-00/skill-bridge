@@ -23,15 +23,10 @@ from .services.exchange import get_usd_to_kes_rate
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
-# =============================================================
-# HELPER: Auto-expire stale pending transactions
-# =============================================================
-def expire_stale_pending_transactions(minutes=5):
-    """
-    Marks any pending transaction older than `minutes` as failed.
-    Prevents transactions from being stuck in 'pending' forever
-    when a payment provider never sends the callback.
-    """
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def expire_stale_pending_transactions(minutes=2):
     cutoff = timezone.now() - timedelta(minutes=minutes)
     stale = Transaction.objects.filter(
         status='pending',
@@ -43,13 +38,27 @@ def expire_stale_pending_transactions(minutes=5):
             status='failed',
             description='Timed out — no callback received from payment provider',
         )
-        print(f'⏰ Auto-expired {count} stale pending transaction(s)')
+        print(f'Auto-expired {count} stale pending transaction(s)')
     return count
 
 
-# =============================================================
-# WALLET VIEWSET
-# =============================================================
+def notify_user(recipient, actor, verb, message, target=''):
+    try:
+        from notifications.models import Notification
+        Notification.objects.create(
+            recipient=recipient,
+            actor=actor,
+            verb=verb,
+            message=message,
+            target=target,
+        )
+    except Exception as e:
+        print(f'Notification failed: {e}')
+
+
+# ---------------------------------------------------------------------------
+# Wallet ViewSet
+# ---------------------------------------------------------------------------
 class WalletViewSet(viewsets.ModelViewSet):
     serializer_class = WalletSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -79,7 +88,7 @@ class WalletViewSet(viewsets.ModelViewSet):
             'has_pin': wallet.has_pin(),
         })
 
-    # ---------- PIN MANAGEMENT ----------
+    # ---------- PIN ----------
     @action(detail=False, methods=['post'])
     def set_pin(self, request):
         wallet = self._get_wallet(request.user)
@@ -106,7 +115,7 @@ class WalletViewSet(viewsets.ModelViewSet):
         wallet.set_pin(serializer.validated_data['new_pin'])
         return Response({'status': 'PIN changed successfully'})
 
-    # ---------- DEPOSIT (legacy) ----------
+    # ---------- DEPOSIT (legacy fallback) ----------
     @action(detail=False, methods=['post'])
     def deposit(self, request):
         amount = self._to_decimal(request.data.get('amount', 0))
@@ -125,6 +134,13 @@ class WalletViewSet(viewsets.ModelViewSet):
         )
         wallet.balance += amount
         wallet.save()
+
+        notify_user(
+            request.user, None, 'deposit_received',
+            f'Deposit of ${amount} added to your wallet',
+            '/wallet',
+        )
+
         return Response({
             'status': 'success',
             'balance': float(wallet.balance),
@@ -157,25 +173,18 @@ class WalletViewSet(viewsets.ModelViewSet):
         net = amount - fee
 
         description = f'Withdrawal via {method.upper()}'
-
         if method == 'mpesa' and phone:
             digits = ''.join(filter(str.isdigit, str(phone)))
             if digits.startswith('0'):
                 digits = '254' + digits[1:]
             elif digits.startswith('7') or digits.startswith('1'):
                 digits = '254' + digits
-            try:
-                rate = get_usd_to_kes_rate()
-                kes_amount = int(net * rate)
-                description += f' — KES {kes_amount} to {digits}'
-            except Exception:
-                description += f' — {digits}'
+            description += f' to {digits}'
         elif method == 'bank' and bank_name:
-            description += f' — {bank_name} ({bank_account})'
+            description += f' to {bank_name}'
 
         with transaction.atomic():
             locked_wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
-
             if locked_wallet.balance < amount:
                 return Response({'error': 'Insufficient balance'}, status=400)
 
@@ -189,6 +198,12 @@ class WalletViewSet(viewsets.ModelViewSet):
             )
             locked_wallet.balance -= amount
             locked_wallet.save()
+
+        notify_user(
+            request.user, None, 'withdrawal_made',
+            f'You withdrew ${amount} to {method.upper()}',
+            '/wallet',
+        )
 
         return Response({
             'status': 'success',
@@ -225,6 +240,9 @@ class WalletViewSet(viewsets.ModelViewSet):
         if to_wallet.user == request.user:
             return Response({'error': 'Cannot transfer to yourself'}, status=400)
 
+        sender_name = request.user.get_full_name() or request.user.username
+        recipient_name = to_wallet.user.get_full_name() or to_wallet.user.username
+
         with transaction.atomic():
             from_wallet = Wallet.objects.select_for_update().get(pk=from_wallet.pk)
             to_wallet = Wallet.objects.select_for_update().get(pk=to_wallet.pk)
@@ -240,7 +258,7 @@ class WalletViewSet(viewsets.ModelViewSet):
                 transaction_type='transfer',
                 amount=-amount,
                 status='success',
-                description=f'Transfer to {to_wallet.user.username} ({to_wallet.wallet_id})',
+                description=f'Transfer to {recipient_name} ({to_wallet.wallet_id})',
                 reference=to_wallet_id,
             )
 
@@ -252,17 +270,28 @@ class WalletViewSet(viewsets.ModelViewSet):
                 transaction_type='transfer',
                 amount=amount,
                 status='success',
-                description=f'Transfer from {request.user.username} ({from_wallet.wallet_id})',
+                description=f'Transfer from {sender_name} ({from_wallet.wallet_id})',
                 reference=from_wallet.wallet_id,
             )
+
+        notify_user(
+            request.user, None, 'transfer_sent',
+            f'You sent ${amount} to {recipient_name}',
+            '/wallet',
+        )
+        notify_user(
+            to_wallet.user, request.user, 'transfer_received',
+            f'{sender_name} sent you ${amount}',
+            '/wallet',
+        )
 
         return Response({
             'status': 'success',
             'balance': float(from_wallet.balance),
-            'recipient': to_wallet.user.username,
+            'recipient': recipient_name,
         })
 
-    # ---------- LOOKUP RECIPIENT ----------
+    # ---------- LOOKUP ----------
     @action(detail=False, methods=['get'])
     def lookup(self, request):
         wallet_id = (request.query_params.get('wallet_id') or '').strip().upper()
@@ -271,10 +300,11 @@ class WalletViewSet(viewsets.ModelViewSet):
 
         try:
             wallet = Wallet.objects.get(wallet_id=wallet_id)
+            name = f'{wallet.user.first_name} {wallet.user.last_name}'.strip() or wallet.user.username
             return Response({
                 'wallet_id': wallet.wallet_id,
                 'username': wallet.user.username,
-                'full_name': f'{wallet.user.first_name} {wallet.user.last_name}'.strip(),
+                'full_name': name,
             })
         except Wallet.DoesNotExist:
             return Response({'error': 'Wallet not found'}, status=404)
@@ -288,9 +318,9 @@ class WalletViewSet(viewsets.ModelViewSet):
         return Response(TransactionSerializer(txs, many=True).data)
 
 
-# =============================================================
-# EXCHANGE RATE — public endpoint
-# =============================================================
+# ---------------------------------------------------------------------------
+# Exchange rate
+# ---------------------------------------------------------------------------
 class ExchangeRateView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -303,9 +333,9 @@ class ExchangeRateView(APIView):
         })
 
 
-# =============================================================
-# STRIPE — Create PaymentIntent
-# =============================================================
+# ---------------------------------------------------------------------------
+# Stripe
+# ---------------------------------------------------------------------------
 class StripeCreateIntentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -340,9 +370,6 @@ class StripeCreateIntentView(APIView):
             return Response({'error': str(e)}, status=400)
 
 
-# =============================================================
-# STRIPE — Webhook
-# =============================================================
 @method_decorator(csrf_exempt, name='dispatch')
 class StripeWebhookView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -369,7 +396,6 @@ class StripeWebhookView(APIView):
             intent_id = obj_data.get('id')
             amount_cents = obj_data.get('amount', 0)
 
-            # For charge events, fetch the PaymentIntent for metadata
             if event_type == 'charge.succeeded' and not user_id:
                 pi_id = obj_data.get('payment_intent')
                 if pi_id:
@@ -408,14 +434,20 @@ class StripeWebhookView(APIView):
                     reference=intent_id,
                 )
 
+            notify_user(
+                wallet.user, None, 'deposit_received',
+                f'Deposit of ${amount} added to your wallet',
+                '/wallet',
+            )
+
             return Response({'received': True, 'credited': float(amount)})
 
         return Response({'received': True})
 
 
-# =============================================================
-# M-PESA — Initiate STK Push
-# =============================================================
+# ---------------------------------------------------------------------------
+# M-Pesa
+# ---------------------------------------------------------------------------
 class MpesaStkPushView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -479,9 +511,6 @@ class MpesaStkPushView(APIView):
         )
 
 
-# =============================================================
-# M-PESA — Callback from Safaricom
-# =============================================================
 @method_decorator(csrf_exempt, name='dispatch')
 class MpesaCallbackView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -497,10 +526,7 @@ class MpesaCallbackView(APIView):
         checkout_id = stk_callback.get('CheckoutRequestID')
         result_desc = stk_callback.get('ResultDesc', '')
 
-        print('=== M-Pesa callback received ===')
-        print(f'  ResultCode: {result_code}')
-        print(f'  ResultDesc: {result_desc}')
-        print(f'  CheckoutRequestID: {checkout_id}')
+        print(f'M-Pesa callback: code={result_code} id={checkout_id} desc={result_desc}')
 
         if result_code == 0 and checkout_id:
             try:
@@ -508,14 +534,18 @@ class MpesaCallbackView(APIView):
                 if tx.status == 'pending':
                     with transaction.atomic():
                         tx.status = 'success'
-                        tx.description = f'M-Pesa deposit (KES {int(tx.amount * Decimal("130"))})'
                         tx.save()
                         wallet = tx.wallet
                         wallet.balance += tx.amount
                         wallet.save()
-                        print(f' Credited wallet {wallet.wallet_id} with ${tx.amount}')
+                    notify_user(
+                        wallet.user, None, 'deposit_received',
+                        f'Deposit of ${tx.amount} added to your wallet',
+                        '/wallet',
+                    )
+                    print(f'Credited wallet {wallet.wallet_id} with ${tx.amount}')
             except Transaction.DoesNotExist:
-                print(f' No pending transaction with reference {checkout_id}')
+                print(f'No pending transaction with reference {checkout_id}')
 
         elif result_code != 0:
             try:
@@ -523,8 +553,7 @@ class MpesaCallbackView(APIView):
                 tx.status = 'failed'
                 tx.description = f'M-Pesa deposit failed: {result_desc}'
                 tx.save()
-                print(f'Transaction {checkout_id} failed: {result_desc}')
             except Transaction.DoesNotExist:
-                print(f'No transaction found for failed callback {checkout_id}')
+                pass
 
         return Response({'ResultCode': 0, 'ResultDesc': 'Success'})
