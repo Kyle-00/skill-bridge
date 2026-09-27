@@ -3,61 +3,103 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { FaArrowLeft, FaPaperPlane } from 'react-icons/fa';
 import api from '../../api/axiosConfig';
-import useWebSocket from '../../hooks/useWebSocket';
+
+const POLL_INTERVAL_MS = 3000;
 
 const ChatRoom = () => {
   const { roomId } = useParams();
   const navigate = useNavigate();
   const user = useSelector((s) => s.auth.user);
-  const { liveMessages, sendMessage, connected } = useWebSocket(roomId);
 
-  const [history, setHistory] = useState([]);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [room, setRoom] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+
+  const lastIdRef = useRef(0);
+  const pollRef = useRef(null);
   const scrollRef = useRef(null);
 
+  // Fetch room info once
   useEffect(() => {
     let cancelled = false;
-
     api.get(`chat/rooms/${roomId}/`)
       .then((res) => { if (!cancelled) setRoom(res.data); })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false); });
-
     return () => { cancelled = true; };
   }, [roomId]);
 
+  // Poll for new messages every 3 seconds
   useEffect(() => {
+    if (!roomId) return;
+
     let cancelled = false;
 
-    api.get(`chat/messages/?room=${roomId}`)
-      .then((res) => { if (!cancelled) setHistory(res.data || []); })
-      .catch(() => {});
+    const fetchMessages = async () => {
+      try {
+        const url = lastIdRef.current
+          ? `chat/messages/?room=${roomId}&since=${lastIdRef.current}`
+          : `chat/messages/?room=${roomId}`;
 
-    return () => { cancelled = true; };
+        const res = await api.get(url);
+        const incoming = Array.isArray(res.data) ? res.data : [];
+
+        if (!cancelled && incoming.length > 0) {
+          lastIdRef.current = incoming[incoming.length - 1].id;
+          setMessages((prev) => {
+            const existing = new Set(prev.map((m) => m.id));
+            const fresh = incoming.filter((m) => !existing.has(m.id));
+            return [...prev, ...fresh];
+          });
+        }
+      } catch {
+        // Ignore network blips; next poll will recover
+      }
+    };
+
+    fetchMessages();
+    pollRef.current = setInterval(fetchMessages, POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
   }, [roomId]);
 
-  // Merge history with live messages
-  const allMessages = [
-    ...history,
-    ...liveMessages.filter((lm) => !history.some((h) => h.id === lm.id)),
-  ];
-
+  // Auto-scroll to the newest message
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [allMessages.length]);
+  }, [messages.length]);
 
-  const handleSend = () => {
-    const text = input.trim();
-    if (!text) return;
-    const sent = sendMessage(text);
-    if (!sent) {
-      alert('Not connected. Please wait a moment and try again.');
-      return;
+  const handleSend = async () => {
+    const content = input.trim();
+    if (!content || sending) return;
+
+    setSending(true);
+    setError('');
+
+    try {
+      const res = await api.post('chat/messages/', {
+        room: parseInt(roomId, 10),
+        content,
+      });
+
+      setMessages((prev) => [...prev, res.data]);
+      lastIdRef.current = res.data.id;
+      setInput('');
+    } catch (err) {
+      const data = err.response?.data;
+      setError(data?.content?.[0] || data?.detail || 'Failed to send message.');
+    } finally {
+      setSending(false);
     }
-    setInput('');
   };
 
   const handleKeyDown = (e) => {
@@ -102,12 +144,8 @@ const ChatRoom = () => {
               {otherName}
             </p>
             <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  connected ? 'bg-green-500' : 'bg-gray-400'
-                }`}
-              />
-              {connected ? 'Connected' : 'Connecting...'}
+              <span className="w-2 h-2 rounded-full bg-green-500" />
+              Live &middot; refreshes every 3s
             </p>
           </div>
         </div>
@@ -116,15 +154,13 @@ const ChatRoom = () => {
           ref={scrollRef}
           className="flex-1 overflow-y-auto p-5 space-y-3 bg-gold-50/30 dark:bg-black/20"
         >
-          {allMessages.length === 0 ? (
+          {messages.length === 0 ? (
             <p className="text-center text-sm text-gray-400 dark:text-gray-500 mt-8">
               No messages yet. Say hello.
             </p>
           ) : (
-            allMessages.map((msg, idx) => {
-              const isMine =
-                msg.sender === user?.id || msg.sender_id === user?.id;
-              const senderName = msg.sender_name || '';
+            messages.map((msg) => {
+              const isMine = msg.sender === user?.id;
               const time = msg.created_at
                 ? new Date(msg.created_at).toLocaleTimeString([], {
                     hour: '2-digit',
@@ -134,7 +170,7 @@ const ChatRoom = () => {
 
               return (
                 <div
-                  key={msg.id || `live-${idx}`}
+                  key={msg.id}
                   className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}
                 >
                   <div
@@ -144,13 +180,13 @@ const ChatRoom = () => {
                         : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-sm shadow-sm'
                     }`}
                   >
-                    {!isMine && senderName && (
+                    {!isMine && msg.sender_name && (
                       <p className="text-xs font-semibold text-gold-600 dark:text-gold-400 mb-0.5">
-                        {senderName}
+                        {msg.sender_name}
                       </p>
                     )}
                     <p className="text-sm whitespace-pre-line break-words">
-                      {msg.content || msg.message}
+                      {msg.content}
                     </p>
                     <p
                       className={`text-[10px] mt-1 ${
@@ -166,6 +202,10 @@ const ChatRoom = () => {
           )}
         </div>
 
+        {error && (
+          <p className="px-4 py-2 text-sm text-red-600">{error}</p>
+        )}
+
         <div className="px-4 py-3 border-t border-gold-200 dark:border-gold-800 bg-white/40 dark:bg-gray-900/40">
           <div className="flex items-end gap-2">
             <textarea
@@ -178,9 +218,9 @@ const ChatRoom = () => {
             />
             <button
               onClick={handleSend}
-              disabled={!input.trim() || !connected}
+              disabled={!input.trim() || sending}
               className={`p-3 rounded-full text-white transition shrink-0 ${
-                input.trim() && connected
+                input.trim() && !sending
                   ? 'bg-gold-600 hover:bg-gold-700'
                   : 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed'
               }`}
