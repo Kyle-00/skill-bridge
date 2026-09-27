@@ -14,23 +14,21 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
             participants=self.request.user
         ).order_by('-created_at')
 
-    @action(detail=False, methods=['post'])
-    def start(self, request):
-        other_user_id = request.data.get('user_id')
-        if not other_user_id:
-            return Response({'error': 'user_id is required'}, status=400)
-        if int(other_user_id) == request.user.id:
-            return Response({'error': 'Cannot chat with yourself'}, status=400)
+    def get_serializer_context(self):
+        return {'request': self.request}
 
-        room = ChatRoom.objects.filter(
-            participants=request.user
-        ).filter(participants__id=other_user_id).first()
+    @action(detail=True, methods=['post'])
+    def mark_read(self, request, pk=None):
+        room = self.get_object()
+        room.messages.filter(is_read=False).exclude(sender=request.user).update(is_read=True)
+        return Response({'status': 'ok'})
 
-        if not room:
-            room = ChatRoom.objects.create()
-            room.participants.add(request.user, other_user_id)
-
-        return Response(ChatRoomSerializer(room).data)
+    @action(detail=False, methods=['get'])
+    def unread_count(self, request):
+        count = Message.objects.filter(
+            room__participants=request.user, is_read=False
+        ).exclude(sender=request.user).count()
+        return Response({'unread': count})
 
 
 class MessageViewSet(viewsets.ModelViewSet):
@@ -42,17 +40,30 @@ class MessageViewSet(viewsets.ModelViewSet):
         since = self.request.query_params.get('since')
 
         qs = Message.objects.filter(room__participants=self.request.user)
-
         if room_id:
             qs = qs.filter(room_id=room_id)
-
         if since:
             try:
                 qs = qs.filter(id__gt=int(since))
             except (ValueError, TypeError):
                 pass
-
         return qs.order_by('created_at')
 
     def perform_create(self, serializer):
-        serializer.save(sender=self.request.user)
+        msg = serializer.save(sender=self.request.user)
+
+        # Notify the other participant
+        try:
+            from notifications.models import Notification
+            for p in msg.room.participants.all():
+                if p.id != self.request.user.id:
+                    sender_name = self.request.user.get_full_name() or self.request.user.username
+                    Notification.objects.create(
+                        recipient=p,
+                        actor=self.request.user,
+                        verb='new_message',
+                        message=f'New message from {sender_name}',
+                        target=f'/chat/{msg.room.id}',
+                    )
+        except Exception:
+            pass
