@@ -24,7 +24,11 @@ PLATFORM_FEE_RATE = Decimal('0.05')
 
 
 def get_or_create_room(user_a, user_b):
-    room = ChatRoom.objects.filter(participants=user_a).filter(participants=user_b).first()
+    room = (
+        ChatRoom.objects.filter(participants=user_a)
+        .filter(participants=user_b)
+        .first()
+    )
     if room:
         return room
     room = ChatRoom.objects.create()
@@ -32,13 +36,17 @@ def get_or_create_room(user_a, user_b):
     return room
 
 
-def notify(recipient, actor, verb, target=''):
-    Notification.objects.create(
-        recipient=recipient,
-        actor=actor,
-        verb=verb,
-        target=target,
-    )
+def notify(recipient, actor, verb, message, target=''):
+    try:
+        Notification.objects.create(
+            recipient=recipient,
+            actor=actor,
+            verb=verb,
+            message=message,
+            target=target,
+        )
+    except Exception as e:
+        print(f'Notification failed: {e}')
 
 
 class OrderViewSet(viewsets.ModelViewSet):
@@ -76,7 +84,13 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status='pending',
             )
             room = get_or_create_room(request.user, gig.freelancer)
-            notify(gig.freelancer, request.user, 'new_order', f'/orders/{order.id}')
+
+            client_name = request.user.get_full_name() or request.user.username
+            notify(
+                gig.freelancer, request.user, 'order_created',
+                f'{client_name} ordered your gig "{gig.title}"',
+                f'/orders/{order.id}',
+            )
 
         return Response({
             'order': self.get_serializer(order).data,
@@ -116,7 +130,13 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.funded_at = timezone.now()
         order.save()
 
-        notify(order.freelancer, request.user, 'order_funded', f'/orders/{order.id}')
+        client_name = request.user.get_full_name() or request.user.username
+        notify(
+            order.freelancer, request.user, 'order_funded',
+            f'{client_name} paid ${order.total_amount} into escrow for order #{order.id}',
+            f'/orders/{order.id}',
+        )
+
         return Response(self.get_serializer(order).data)
 
     @action(detail=True, methods=['post'], url_path='submit-work')
@@ -140,7 +160,13 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.status = 'delivered'
         order.save()
 
-        notify(order.client, request.user, 'work_delivered', f'/orders/{order.id}')
+        freelancer_name = request.user.get_full_name() or request.user.username
+        notify(
+            order.client, request.user, 'work_delivered',
+            f'{freelancer_name} delivered work for order #{order.id}',
+            f'/orders/{order.id}',
+        )
+
         return Response(self.get_serializer(order).data)
 
     @action(detail=True, methods=['post'], url_path='approve-work')
@@ -174,7 +200,11 @@ class OrderViewSet(viewsets.ModelViewSet):
             order.completed_at = timezone.now()
             order.save()
 
-            notify(order.freelancer, request.user, 'payment_released', f'/orders/{order.id}')
+            notify(
+                order.freelancer, request.user, 'payment_released',
+                f'You received ${payout} from order #{order.id}',
+                '/wallet',
+            )
 
         return Response(self.get_serializer(order).data)
 
