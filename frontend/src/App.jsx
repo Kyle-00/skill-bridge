@@ -59,98 +59,81 @@ import Notifications from './components/pages/Notifications';
 
 function App() {
   const theme = useSelector((s) => s.theme.mode);
-  const isAuthenticated = useSelector((s) => s.auth.isAuthenticated);
 
   return (
     <div className={theme}>
       <BrowserRouter>
         <ScrollToTop />
         <Navbar />
-        <div className="flex min-h-screen">
-          {isAuthenticated && <Sidebar />}
-          <div
-            className={`flex-1 flex flex-col pt-16 transition-all duration-300 ${
-              isAuthenticated ? 'md:ml-64' : ''
-            }`}
-          >
-            <main className="flex-1 pb-6">
-              <Routes>
-                {/* Public */}
-                <Route path="/" element={<Landing />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
+        <Sidebar />
+        <main className="min-h-screen pt-16 pb-20">
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
 
-                <Route path="/find-work" element={<FindWork />} />
-                <Route path="/hire-talent" element={<HireTalent />} />
-                <Route path="/why-skillbridge" element={<WhySkillBridge />} />
-                <Route path="/pricing" element={<Pricing />} />
-                <Route
-                  path="/pricing/:plan/checkout"
-                  element={
-                    <ProtectedRoute>
-                      <PlanCheckout />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route path="/resources" element={<Resources />} />
-                <Route path="/resources/:slug" element={<ResourceDetail />} />
-                <Route path="/about" element={<About />} />
-                <Route path="/how-it-works" element={<HowItWorks />} />
-                <Route path="/blog" element={<Blog />} />
-                <Route path="/contact" element={<Contact />} />
-                <Route path="/privacy" element={<Privacy />} />
+            <Route path="/find-work" element={<FindWork />} />
+            <Route path="/hire-talent" element={<HireTalent />} />
+            <Route path="/why-skillbridge" element={<WhySkillBridge />} />
+            <Route path="/pricing" element={<Pricing />} />
+            <Route
+              path="/pricing/:plan/checkout"
+              element={
+                <ProtectedRoute>
+                  <PlanCheckout />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/resources" element={<Resources />} />
+            <Route path="/resources/:slug" element={<ResourceDetail />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/how-it-works" element={<HowItWorks />} />
+            <Route path="/blog" element={<Blog />} />
+            <Route path="/contact" element={<Contact />} />
+            <Route path="/privacy" element={<Privacy />} />
 
-                <Route path="/chat" element={<Navigate to="/messages" replace />} />
+            <Route path="/chat" element={<Navigate to="/messages" replace />} />
 
-                {/* Dashboard */}
-                <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
 
-                {/* Admin */}
-                <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
-                <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
-                <Route path="/admin/gigs" element={<ProtectedRoute><AdminGigs /></ProtectedRoute>} />
-                <Route path="/admin/projects" element={<ProtectedRoute><AdminProjects /></ProtectedRoute>} />
-                <Route path="/admin/orders" element={<ProtectedRoute><AdminOrders /></ProtectedRoute>} />
+            <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+            <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
+            <Route path="/admin/gigs" element={<ProtectedRoute><AdminGigs /></ProtectedRoute>} />
+            <Route path="/admin/projects" element={<ProtectedRoute><AdminProjects /></ProtectedRoute>} />
+            <Route path="/admin/orders" element={<ProtectedRoute><AdminOrders /></ProtectedRoute>} />
 
-                {/* Gigs */}
-                <Route path="/gigs" element={<ProtectedRoute><GigList key="all" /></ProtectedRoute>} />
-                <Route path="/gigs/mine" element={<ProtectedRoute><GigList key="mine" mine /></ProtectedRoute>} />
-                <Route path="/gigs/create" element={<ProtectedRoute><CreateGig /></ProtectedRoute>} />
-                <Route path="/gigs/:id" element={<ProtectedRoute><GigDetail /></ProtectedRoute>} />
-                <Route path="/gigs/:id/edit" element={<ProtectedRoute><EditGig /></ProtectedRoute>} />
+            <Route path="/gigs" element={<ProtectedRoute><GigList key="all" /></ProtectedRoute>} />
+            <Route path="/gigs/mine" element={<ProtectedRoute><GigList key="mine" mine /></ProtectedRoute>} />
+            <Route path="/gigs/create" element={<ProtectedRoute><CreateGig /></ProtectedRoute>} />
+            <Route path="/gigs/:id" element={<ProtectedRoute><GigDetail /></ProtectedRoute>} />
+            <Route path="/gigs/:id/edit" element={<ProtectedRoute><EditGig /></ProtectedRoute>} />
 
-                {/* Projects */}
-                <Route path="/projects" element={<ProtectedRoute><ProjectList key="all" /></ProtectedRoute>} />
-                <Route path="/projects/mine" element={<ProtectedRoute><ProjectList key="mine" mine /></ProtectedRoute>} />
-                <Route path="/projects/post" element={<ProtectedRoute><PostProject /></ProtectedRoute>} />
-                <Route path="/projects/:id" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
-                <Route path="/projects/:id/edit" element={<ProtectedRoute><EditProject /></ProtectedRoute>} />
-                <Route path="/projects/:id/manage" element={<ProtectedRoute><MyProjectDetail /></ProtectedRoute>} />
+            <Route path="/projects" element={<ProtectedRoute><ProjectList key="all" /></ProtectedRoute>} />
+            <Route path="/projects/mine" element={<ProtectedRoute><ProjectList key="mine" mine /></ProtectedRoute>} />
+            <Route path="/projects/post" element={<ProtectedRoute><PostProject /></ProtectedRoute>} />
+            <Route path="/projects/:id" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
+            <Route path="/projects/:id/edit" element={<ProtectedRoute><EditProject /></ProtectedRoute>} />
+            <Route path="/projects/:id/manage" element={<ProtectedRoute><MyProjectDetail /></ProtectedRoute>} />
 
-                {/* Orders */}
-                <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
-                <Route path="/orders/:id" element={<ProtectedRoute><OrderDetail /></ProtectedRoute>} />
+            <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
+            <Route path="/orders/:id" element={<ProtectedRoute><OrderDetail /></ProtectedRoute>} />
 
-                {/* Wallet */}
-                <Route path="/wallet" element={<ProtectedRoute><Wallet /></ProtectedRoute>} />
-                <Route path="/wallet/deposit" element={<ProtectedRoute><Deposit /></ProtectedRoute>} />
-                <Route path="/wallet/withdraw" element={<ProtectedRoute><Withdraw /></ProtectedRoute>} />
-                <Route path="/wallet/transfer" element={<ProtectedRoute><Transfer /></ProtectedRoute>} />
-                <Route path="/wallet/security" element={<ProtectedRoute><WalletSecurity /></ProtectedRoute>} />
+            <Route path="/wallet" element={<ProtectedRoute><Wallet /></ProtectedRoute>} />
+            <Route path="/wallet/deposit" element={<ProtectedRoute><Deposit /></ProtectedRoute>} />
+            <Route path="/wallet/withdraw" element={<ProtectedRoute><Withdraw /></ProtectedRoute>} />
+            <Route path="/wallet/transfer" element={<ProtectedRoute><Transfer /></ProtectedRoute>} />
+            <Route path="/wallet/security" element={<ProtectedRoute><WalletSecurity /></ProtectedRoute>} />
 
-                {/* Misc */}
-                <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-                <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-                <Route path="/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
-                <Route path="/chat/:roomId" element={<ProtectedRoute><ChatRoom /></ProtectedRoute>} />
-                <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+            <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
+            <Route path="/chat/:roomId" element={<ProtectedRoute><ChatRoom /></ProtectedRoute>} />
+            <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
 
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </main>
-            <Footer />
-          </div>
-        </div>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+        <Footer />
         <BackToTop />
       </BrowserRouter>
     </div>
