@@ -11,17 +11,18 @@ class ChatParticipantSerializer(serializers.ModelSerializer):
         fields = ['id', 'username', 'first_name', 'last_name', 'display_name']
 
     def get_display_name(self, obj):
-        full = f"{obj.first_name} {obj.last_name}".strip()
+        full = f'{obj.first_name} {obj.last_name}'.strip()
         return full or obj.username
 
 
 class ChatRoomSerializer(serializers.ModelSerializer):
     participants = ChatParticipantSerializer(many=True, read_only=True)
     last_message = serializers.SerializerMethodField()
+    unread_count = serializers.SerializerMethodField()
 
     class Meta:
         model = ChatRoom
-        fields = ['id', 'participants', 'created_at', 'last_message']
+        fields = ['id', 'participants', 'created_at', 'last_message', 'unread_count']
 
     def get_last_message(self, obj):
         last = obj.messages.order_by('-created_at').first()
@@ -32,6 +33,12 @@ class ChatRoomSerializer(serializers.ModelSerializer):
             'sender_name': last.sender.get_full_name() or last.sender.username,
             'created_at': last.created_at,
         }
+
+    def get_unread_count(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return 0
+        return obj.messages.filter(is_read=False).exclude(sender=request.user).count()
 
 
 class MessageSerializer(serializers.ModelSerializer):
