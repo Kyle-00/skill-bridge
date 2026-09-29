@@ -27,18 +27,27 @@ const GigDetail = () => {
   }, [id]);
 
   const handleBuyNow = async () => {
-    setBuying(true);
-    setBuyError('');
-    try {
-      const res = await api.post('orders/buy-gig/', { gig_id: gig.id });
-      const orderId = res.data.order.id;
-      navigate(`/orders/${orderId}`);
-    } catch (err) {
-      setBuyError(err.response?.data?.error || 'Could not create order.');
-    } finally {
-      setBuying(false);
+  setBuying(true);
+  setBuyError('');
+  try {
+    const res = await api.post('orders/buy-gig/', { gig_id: gig.id });
+    const orderId = res.data.order.id;
+    navigate(`/orders/${orderId}`);
+  } catch (err) {
+    const data = err.response?.data;
+
+    // If the client already has an active order for this gig,
+    // jump straight to that order instead of showing an error
+    if (data?.order_id) {
+      navigate(`/orders/${data.order_id}`);
+      return;
     }
-  };
+
+    setBuyError(data?.error || 'Could not create order.');
+  } finally {
+    setBuying(false);
+  }
+};
 
   if (loading) {
     return (
