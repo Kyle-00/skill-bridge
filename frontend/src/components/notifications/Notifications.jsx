@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { Link } from 'react-router-dom';
-import { FaBell, FaCheckDouble } from 'react-icons/fa';
+import { FaBell, FaCheckDouble, FaExclamationTriangle } from 'react-icons/fa';
 import api from '../../api/axiosConfig';
 import { markAllRead as markAllReadLocal } from '../../store/notificationSlice';
 
@@ -18,6 +18,7 @@ const Notifications = () => {
   const dispatch = useDispatch();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -25,19 +26,27 @@ const Notifications = () => {
     const fetchNotifications = async () => {
       try {
         const res = await api.get('notifications/');
-        if (!cancelled) setItems(res.data || []);
+        if (!cancelled) {
+          setItems(res.data || []);
+          setError('');
+        }
       } catch (err) {
-        console.warn('Failed to load notifications:', err);
-        if (!cancelled) setItems([]);
+        console.error('Notifications fetch failed:', err);
+        if (!cancelled) {
+          const msg =
+            err.response?.data?.detail ||
+            err.response?.data?.error ||
+            `Failed to load (${err.response?.status || 'network error'})`;
+          setError(msg);
+          setItems([]);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     };
 
     fetchNotifications();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
   const handleMarkAllRead = async () => {
@@ -74,7 +83,17 @@ const Notifications = () => {
         )}
       </div>
 
-      {items.length === 0 ? (
+      {error && (
+        <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm flex items-start gap-2">
+          <FaExclamationTriangle className="mt-0.5 shrink-0" />
+          <div>
+            <p className="font-semibold">Could not load notifications</p>
+            <p className="mt-1">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {items.length === 0 && !error ? (
         <div className="glass p-12 rounded-2xl text-center text-gray-500 dark:text-gray-400">
           <FaBell className="text-5xl mx-auto mb-4 text-gold-300" />
           <p className="text-lg font-medium">No notifications yet</p>
