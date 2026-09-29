@@ -59,6 +59,9 @@ class OrderViewSet(viewsets.ModelViewSet):
             models.Q(client=user) | models.Q(freelancer=user)
         ).distinct().order_by('-created_at')
 
+    # -----------------------------------------------------------------------
+    # BUY GIG (with duplicate check)
+    # -----------------------------------------------------------------------
     @action(detail=False, methods=['post'], url_path='buy-gig')
     def buy_gig(self, request):
         gig_id = request.data.get('gig_id')
@@ -69,6 +72,19 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         if gig.freelancer_id == request.user.id:
             return Response({'error': 'You cannot buy your own gig'}, status=400)
+
+        # Prevent duplicate active orders on the same gig
+        existing = Order.objects.filter(
+            gig=gig,
+            client=request.user,
+            status__in=['pending', 'in_progress', 'delivered'],
+        ).first()
+
+        if existing:
+            return Response({
+                'error': 'You already have an active order for this gig.',
+                'order_id': existing.id,
+            }, status=400)
 
         total_amount = Decimal(str(gig.price))
         platform_fee = (total_amount * PLATFORM_FEE_RATE).quantize(Decimal('0.01'))
@@ -97,6 +113,9 @@ class OrderViewSet(viewsets.ModelViewSet):
             'chat_room_id': room.id,
         }, status=status.HTTP_201_CREATED)
 
+    # -----------------------------------------------------------------------
+    # FUND ESCROW
+    # -----------------------------------------------------------------------
     @action(detail=True, methods=['post'], url_path='fund-escrow')
     def fund_escrow(self, request, pk=None):
         order = self.get_object()
@@ -119,6 +138,9 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         return Response({'error': 'Invalid payment method'}, status=400)
 
+    # -----------------------------------------------------------------------
+    # MARK FUNDED
+    # -----------------------------------------------------------------------
     @action(detail=True, methods=['post'], url_path='mark-funded')
     def mark_funded(self, request, pk=None):
         order = self.get_object()
@@ -139,6 +161,9 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         return Response(self.get_serializer(order).data)
 
+    # -----------------------------------------------------------------------
+    # SUBMIT WORK
+    # -----------------------------------------------------------------------
     @action(detail=True, methods=['post'], url_path='submit-work')
     def submit_work(self, request, pk=None):
         order = self.get_object()
@@ -169,6 +194,9 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         return Response(self.get_serializer(order).data)
 
+    # -----------------------------------------------------------------------
+    # APPROVE WORK
+    # -----------------------------------------------------------------------
     @action(detail=True, methods=['post'], url_path='approve-work')
     def approve_work(self, request, pk=None):
         order = self.get_object()
@@ -207,6 +235,80 @@ class OrderViewSet(viewsets.ModelViewSet):
             )
 
         return Response(self.get_serializer(order).data)
+
+    # -----------------------------------------------------------------------
+    # CANCEL ORDER (client only)
+    # -----------------------------------------------------------------------
+    @action(detail=True, methods=['post'], url_path='cancel')
+    def cancel(self, request, pk=None):
+        order = self.get_object()
+
+        if order.client_id != request.user.id:
+            return Response({'error': 'Only the client can cancel this order'}, status=403)
+
+        if order.status in ['completed', 'cancelled']:
+            return Response(
+                {'error': f'Cannot cancel a {order.status} order'},
+                status=400,
+            )
+
+        refund_amount = Decimal('0')
+        client_name = request.user.get_full_name() or request.user.username
+
+        with db_transaction.atomic():
+            # If escrow was funded, refund the client in full
+            if order.escrow_funded:
+                client_wallet, _ = Wallet.objects.get_or_create(user=order.client)
+                client_wallet.balance += order.total_amount
+                client_wallet.save()
+                refund_amount = order.total_amount
+
+                WalletTransaction.objects.create(
+                    wallet=client_wallet,
+                    transaction_type='refund',
+                    amount=order.total_amount,
+                    status='success',
+                    description=f'Refund for cancelled order #{order.id}',
+                    reference=f'REFUND-{order.id}',
+                )
+
+            order.status = 'cancelled'
+            order.save()
+
+            # Notify the freelancer
+            notify(
+                order.freelancer, request.user, 'order_cancelled',
+                f'{client_name} cancelled order #{order.id}',
+                '/orders',
+            )
+
+            # Notify the client about the refund
+            if refund_amount > 0:
+                notify(
+                    order.client, None, 'refund_received',
+                    f'${refund_amount} has been refunded to your wallet for order #{order.id}',
+                    '/wallet',
+                )
+
+        return Response(self.get_serializer(order).data)
+
+    # -----------------------------------------------------------------------
+    # DELETE ORDER (client only, only when cancelled)
+    # -----------------------------------------------------------------------
+    def destroy(self, request, *args, **kwargs):
+        order = self.get_object()
+
+        if order.client_id != request.user.id:
+            return Response({'error': 'Only the client can delete this order'}, status=403)
+
+        if order.status != 'cancelled':
+            return Response(
+                {'error': 'Only cancelled orders can be deleted.'},
+                status=400,
+            )
+
+        order.delete()
+        return Response({'status': 'deleted'}, status=204)
 
 
 class TransactionViewSet(viewsets.ModelViewSet):
