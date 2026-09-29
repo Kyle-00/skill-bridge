@@ -22,7 +22,7 @@ const ChatRoom = () => {
   const pollRef = useRef(null);
   const scrollRef = useRef(null);
 
-  // Fetch room info once
+  // Load room info
   useEffect(() => {
     let cancelled = false;
     api.get(`chat/rooms/${roomId}/`)
@@ -32,7 +32,7 @@ const ChatRoom = () => {
     return () => { cancelled = true; };
   }, [roomId]);
 
-  // Poll for new messages every 3 seconds
+  // Poll for new messages
   useEffect(() => {
     if (!roomId) return;
 
@@ -56,7 +56,7 @@ const ChatRoom = () => {
           });
         }
       } catch {
-        // Ignore network blips; next poll will recover
+        // Network hiccup; next tick retries
       }
     };
 
@@ -72,7 +72,13 @@ const ChatRoom = () => {
     };
   }, [roomId]);
 
-  // Auto-scroll to the newest message
+  // Mark the room as read when opening or receiving new messages
+  useEffect(() => {
+    if (!roomId) return;
+    api.post(`chat/rooms/${roomId}/mark_read/`).catch(() => {});
+  }, [roomId, messages.length]);
+
+  // Auto-scroll to newest
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
