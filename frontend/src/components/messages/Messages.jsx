@@ -12,12 +12,23 @@ const Messages = () => {
   useEffect(() => {
     let cancelled = false;
 
-    api.get('chat/rooms/')
-      .then((res) => { if (!cancelled) setRooms(res.data || []); })
-      .catch(() => { if (!cancelled) setRooms([]); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+    const load = async () => {
+      try {
+        const res = await api.get('chat/rooms/');
+        if (!cancelled) setRooms(res.data || []);
+      } catch {
+        if (!cancelled) setRooms([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
 
-    return () => { cancelled = true; };
+    load();
+    const interval = setInterval(load, 8000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, []);
 
   if (loading) {
@@ -58,6 +69,7 @@ const Messages = () => {
               const initial = otherName[0]?.toUpperCase() || '?';
               const preview =
                 room.last_message?.content?.slice(0, 60) || 'No messages yet';
+              const unread = room.unread_count || 0;
 
               return (
                 <Link
@@ -69,14 +81,18 @@ const Messages = () => {
                     {initial}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-800 dark:text-gray-200 truncate">
+                    <p className={`truncate ${unread > 0 ? 'font-bold text-gray-900 dark:text-white' : 'font-semibold text-gray-800 dark:text-gray-200'}`}>
                       {otherName}
                     </p>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                    <p className={`text-sm truncate ${unread > 0 ? 'text-gray-700 dark:text-gray-200 font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
                       {preview}
                     </p>
                   </div>
-                  <span className="text-xs text-gold-600 shrink-0">View</span>
+                  {unread > 0 && (
+                    <span className="bg-blue-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center shrink-0">
+                      {unread}
+                    </span>
+                  )}
                 </Link>
               );
             })}
