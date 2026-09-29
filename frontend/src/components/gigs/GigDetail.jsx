@@ -125,7 +125,7 @@ const GigDetail = () => {
                 buying ? 'bg-gray-400 cursor-not-allowed' : 'bg-gold-600 hover:bg-gold-700'
               }`}
             >
-              {buying ? 'Creating order...' : `Buy Now for $${gig.price}`}
+              {buying ? 'Starting order...' : `Start an Order — $${gig.price}`} 
             </button>
           )}
         </div>
