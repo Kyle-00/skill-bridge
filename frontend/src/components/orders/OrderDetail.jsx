@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import {
   FaArrowLeft, FaComments, FaCheckCircle, FaStar,
-  FaLock, FaHourglassHalf,
+  FaLock, FaHourglassHalf, FaInfoCircle,
 } from 'react-icons/fa';
 import api from '../../api/axiosConfig';
 
@@ -131,6 +131,13 @@ const OrderDetail = () => {
     disputed: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300',
   }[order.status];
 
+  const clientName = order.client?.first_name || order.client?.last_name
+    ? `${order.client.first_name} ${order.client.last_name}`.trim()
+    : order.client?.username;
+  const freelancerName = order.freelancer?.first_name || order.freelancer?.last_name
+    ? `${order.freelancer.first_name} ${order.freelancer.last_name}`.trim()
+    : order.freelancer?.username;
+
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto">
       <button
@@ -153,42 +160,28 @@ const OrderDetail = () => {
               Order #{order.id}
             </p>
           </div>
-          <span
-            className={`text-xs px-3 py-1 rounded-full capitalize ${statusColor}`}
-          >
+          <span className={`text-xs px-3 py-1 rounded-full capitalize ${statusColor}`}>
             {order.status.replace('_', ' ')}
           </span>
         </div>
 
         <div className="grid grid-cols-2 gap-4 mt-6">
           <div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">
-              Client
-            </p>
-            <p className="font-semibold text-gray-800 dark:text-gray-200">
-              {order.client?.username}
-            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">Client</p>
+            <p className="font-semibold text-gray-800 dark:text-gray-200">{clientName}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">
-              Freelancer
-            </p>
-            <p className="font-semibold text-gray-800 dark:text-gray-200">
-              {order.freelancer?.username}
-            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">Freelancer</p>
+            <p className="font-semibold text-gray-800 dark:text-gray-200">{freelancerName}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">
-              Total
-            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">Total</p>
             <p className="font-bold text-gold-600 dark:text-gold-400">
               ${parseFloat(order.total_amount).toFixed(2)}
             </p>
           </div>
           <div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">
-              Platform Fee
-            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">Platform Fee</p>
             <p className="font-semibold text-gray-800 dark:text-gray-200">
               ${parseFloat(order.platform_fee).toFixed(2)}
             </p>
@@ -206,6 +199,21 @@ const OrderDetail = () => {
         <h2 className="text-lg font-semibold text-gold-700 dark:text-gold-300 mb-4">
           Actions
         </h2>
+
+        {!order.escrow_funded && isClient && order.status !== 'cancelled' && (
+          <div className="mb-4 p-3 bg-gold-50 dark:bg-gold-950/30 border border-gold-200 dark:border-gold-800 rounded-lg text-sm text-gold-800 dark:text-gold-200 flex items-start gap-2">
+            <FaInfoCircle className="mt-0.5 shrink-0" />
+            <div>
+              <strong>Next step: pay into escrow.</strong>
+              <p className="mt-1">
+                You need to pay ${parseFloat(order.total_amount).toFixed(2)} into escrow.
+                SkillBridge holds the money safely until you approve the delivered work.
+                The freelancer is only paid after you are satisfied.
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="space-y-3">
           {order.chat_room_id && (
             <Link
@@ -222,13 +230,13 @@ const OrderDetail = () => {
               onClick={handleMarkFunded}
               disabled={actionLoading}
               className={`w-full flex items-center gap-2 justify-center p-3 rounded-lg text-white font-semibold transition ${
-                actionLoading
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-gold-600 hover:bg-gold-700'
+                actionLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-gold-600 hover:bg-gold-700'
               }`}
             >
               <FaLock size={12} />
-              {actionLoading ? 'Processing...' : 'Fund Escrow'}
+              {actionLoading
+                ? 'Processing...'
+                : `Pay $${parseFloat(order.total_amount).toFixed(2)} into Escrow`}
             </button>
           )}
 
@@ -237,9 +245,7 @@ const OrderDetail = () => {
               onClick={handleApprove}
               disabled={actionLoading}
               className={`w-full flex items-center gap-2 justify-center p-3 rounded-lg text-white font-semibold transition ${
-                actionLoading
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-green-600 hover:bg-green-700'
+                actionLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
               }`}
             >
               <FaCheckCircle size={12} />
@@ -280,7 +286,7 @@ const OrderDetail = () => {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Deliverable URL
+                Deliverable URL (file, repo, document link)
               </label>
               <input
                 type="url"
@@ -313,9 +319,7 @@ const OrderDetail = () => {
               onClick={handleSubmitDeliverable}
               disabled={actionLoading}
               className={`w-full flex items-center gap-2 justify-center p-3 rounded-lg text-white font-semibold transition ${
-                actionLoading
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-700'
+                actionLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
               }`}
             >
               <FaHourglassHalf size={12} />
@@ -346,9 +350,7 @@ const OrderDetail = () => {
                     <button
                       key={n}
                       type="button"
-                      onClick={() =>
-                        setReview({ ...review, [field.key]: n })
-                      }
+                      onClick={() => setReview({ ...review, [field.key]: n })}
                       className="text-2xl transition"
                       aria-label={`${n} stars`}
                     >
@@ -366,9 +368,7 @@ const OrderDetail = () => {
             ))}
             <textarea
               value={review.comment}
-              onChange={(e) =>
-                setReview({ ...review, comment: e.target.value })
-              }
+              onChange={(e) => setReview({ ...review, comment: e.target.value })}
               placeholder="Share your experience working with this person..."
               rows="3"
               className="w-full p-3 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 outline-none focus:ring-2 focus:ring-gold-400"
@@ -377,9 +377,7 @@ const OrderDetail = () => {
               type="submit"
               disabled={actionLoading}
               className={`w-full py-3 rounded-lg text-white font-semibold transition ${
-                actionLoading
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-gold-600 hover:bg-gold-700'
+                actionLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-gold-600 hover:bg-gold-700'
               }`}
             >
               {actionLoading ? 'Submitting...' : 'Submit Review'}
