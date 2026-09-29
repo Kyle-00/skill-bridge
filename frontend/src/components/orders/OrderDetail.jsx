@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import {
   FaArrowLeft, FaComments, FaCheckCircle, FaStar,
-  FaLock, FaHourglassHalf, FaInfoCircle,
+  FaLock, FaHourglassHalf, FaInfoCircle, FaTimesCircle,
 } from 'react-icons/fa';
 import api from '../../api/axiosConfig';
 
@@ -67,9 +67,30 @@ const OrderDetail = () => {
 
   const handleMarkFunded = () => runAction('mark-funded');
   const handleSubmitDeliverable = () => runAction('submit-work', deliverable);
+
   const handleApprove = () => {
     if (!window.confirm('Approve this work and release funds to the freelancer?')) return;
     runAction('approve-work');
+  };
+
+  const handleCancel = () => {
+    const msg = order.escrow_funded
+      ? 'Cancel this order? The escrow funds will be refunded to your wallet.'
+      : 'Cancel this order?';
+    if (!window.confirm(msg)) return;
+    runAction('cancel');
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm('Permanently delete this cancelled order?')) return;
+    setActionLoading(true);
+    try {
+      await api.delete(`orders/${id}/`);
+      navigate('/orders');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to delete order.');
+      setActionLoading(false);
+    }
   };
 
   const handleSubmitReview = async (e) => {
@@ -137,6 +158,10 @@ const OrderDetail = () => {
   const freelancerName = order.freelancer?.first_name || order.freelancer?.last_name
     ? `${order.freelancer.first_name} ${order.freelancer.last_name}`.trim()
     : order.freelancer?.username;
+
+  const canCancel =
+    isClient && order.status !== 'completed' && order.status !== 'cancelled';
+  const canDelete = isClient && order.status === 'cancelled';
 
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto">
@@ -250,6 +275,36 @@ const OrderDetail = () => {
             >
               <FaCheckCircle size={12} />
               {actionLoading ? 'Processing...' : 'Approve and Release Payment'}
+            </button>
+          )}
+
+          {canCancel && (
+            <button
+              onClick={handleCancel}
+              disabled={actionLoading}
+              className={`w-full flex items-center gap-2 justify-center p-3 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 font-semibold transition ${
+                actionLoading ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+            >
+              <FaTimesCircle size={12} />
+              {actionLoading
+                ? 'Processing...'
+                : order.escrow_funded
+                ? 'Cancel Order and Refund'
+                : 'Cancel Order'}
+            </button>
+          )}
+
+          {canDelete && (
+            <button
+              onClick={handleDelete}
+              disabled={actionLoading}
+              className={`w-full flex items-center gap-2 justify-center p-3 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 font-semibold transition ${
+                actionLoading ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+            >
+              <FaTimesCircle size={12} />
+              {actionLoading ? 'Processing...' : 'Delete Order'}
             </button>
           )}
         </div>
