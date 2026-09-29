@@ -2,16 +2,21 @@ import { useDispatch, useSelector } from 'react-redux';
 import { toggleSidebar } from '../../store/sidebarSlice';
 import { toggleTheme } from '../../store/themeSlice';
 import { logout } from '../../store/authSlice';
-import { FaBars, FaBell, FaMoon, FaSun, FaSignOutAlt } from 'react-icons/fa';
+import { FaBars, FaBell, FaMoon, FaSun, FaSignOutAlt, FaComments } from 'react-icons/fa';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import useNotificationPoll from '../../hooks/useNotificationPoll';
 
 const Navbar = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const location = useLocation();
-  const theme = useSelector((state) => state.theme.mode);
-  const unread = useSelector((state) => state.notifications?.unread || 0);
-  const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
+
+  const theme = useSelector((s) => s.theme.mode);
+  const unread = useSelector((s) => s.notifications?.unread || 0);
+  const unreadMessages = useSelector((s) => s.notifications?.unreadMessages || 0);
+  const isAuthenticated = useSelector((s) => s.auth.isAuthenticated);
+
+  useNotificationPoll();
 
   const handleLogout = () => {
     dispatch(logout());
@@ -28,10 +33,9 @@ const Navbar = () => {
   ];
 
   return (
-    <nav className="fixed top-0 left-0 w-full z-50 bg-white/70 dark:bg-black/70 backdrop-blur-xl border-b border-gold-200/30 dark:border-gold-700/30 shadow-sm transition-colors">
+    <nav className="fixed top-0 left-0 w-full z-50 bg-white/70 dark:bg-black/70 backdrop-blur-xl border-b border-gold-200/30 dark:border-gold-700/30 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          {/* Logo + hamburger (if logged in) */}
           <div className="flex items-center gap-3">
             {isAuthenticated && (
               <button
@@ -42,13 +46,17 @@ const Navbar = () => {
                 <FaBars size={22} />
               </button>
             )}
-            <Link to="/" className="text-2xl font-bold tracking-tight text-gold-600 dark:text-gold-400 flex items-center">
-              <span className="bg-gold-600 text-white px-2 py-1 rounded-lg mr-1 text-sm">SB</span>
+            <Link
+              to="/"
+              className="text-2xl font-bold tracking-tight text-gold-600 dark:text-gold-400 flex items-center"
+            >
+              <span className="bg-gold-600 text-white px-2 py-1 rounded-lg mr-1 text-sm">
+                SB
+              </span>
               SkillBridge
             </Link>
           </div>
 
-          {/* Desktop nav links */}
           <div className="hidden md:flex items-center space-x-1">
             {navLinks.map((link) => (
               <Link
@@ -65,9 +73,7 @@ const Navbar = () => {
             ))}
           </div>
 
-          {/* Right side controls */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Theme toggle */}
             <button
               onClick={() => dispatch(toggleTheme())}
               className="p-2 rounded-full hover:bg-gold-50 dark:hover:bg-gold-900/30 transition text-gold-600"
@@ -76,7 +82,21 @@ const Navbar = () => {
               {theme === 'dark' ? <FaSun size={18} /> : <FaMoon size={18} />}
             </button>
 
-            {/* Notifications */}
+            {isAuthenticated && (
+              <Link
+                to="/messages"
+                className="relative p-2 rounded-full hover:bg-gold-50 dark:hover:bg-gold-900/30 transition text-gold-600"
+                aria-label="Messages"
+              >
+                <FaComments size={18} />
+                {unreadMessages > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 bg-blue-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center shadow-md">
+                    {unreadMessages}
+                  </span>
+                )}
+              </Link>
+            )}
+
             <Link
               to="/notifications"
               className="relative p-2 rounded-full hover:bg-gold-50 dark:hover:bg-gold-900/30 transition text-gold-600"
@@ -90,7 +110,6 @@ const Navbar = () => {
               )}
             </Link>
 
-            {/* Auth buttons */}
             {isAuthenticated ? (
               <button
                 onClick={handleLogout}
@@ -122,4 +141,5 @@ const Navbar = () => {
     </nav>
   );
 };
+
 export default Navbar;
