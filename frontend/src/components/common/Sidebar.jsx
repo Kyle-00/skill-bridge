@@ -98,7 +98,7 @@ const Sidebar = () => {
             <NavLink to="/gigs/mine" className={linkClass}>
               <FaBriefcase /> My Gigs
             </NavLink>
-            <NavLink to="/gigs/create" className={linkClass}>
+            <NavLink to="/create-gig" className={linkClass}>
               <FaPlus /> Create Gig
             </NavLink>
           </>
@@ -110,10 +110,10 @@ const Sidebar = () => {
             <NavLink to="/gigs" end className={linkClass}>
               <FaSearch /> Browse Gigs
             </NavLink>
-            <NavLink to="/projects/mine" className={linkClass}>
+            <NavLink to="/my-projects" className={linkClass}>
               <FaList /> My Projects
             </NavLink>
-            <NavLink to="/projects/post" className={linkClass}>
+            <NavLink to="/projects/new" className={linkClass}>
               <FaPlus /> Post Project
             </NavLink>
           </>
