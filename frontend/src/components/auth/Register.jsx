@@ -34,12 +34,14 @@ const Register = () => {
           token: response.credential,
           role: form.role,
         });
+
         dispatch(setCredentials({
           user: res.data.user,
           token: res.data.access,
           refresh: res.data.refresh,
         }));
-        navigate('/dashboard');
+
+        navigate(res.data.is_new_user ? '/choose-role' : '/dashboard');
       } catch {
         setError('Google sign-up failed. Please try again.');
       } finally {
@@ -89,8 +91,8 @@ const Register = () => {
     } catch (err) {
       setError(
         err.response?.data?.detail ||
-        Object.values(err.response?.data || {})[0]?.[0] ||
-        'Registration failed. Please check your details.'
+          Object.values(err.response?.data || {})[0]?.[0] ||
+          'Registration failed. Please check your details.'
       );
     } finally {
       setLoading(false);
@@ -98,132 +100,139 @@ const Register = () => {
   };
 
   return (
-    <div className="max-w-md mx-auto mt-20 glass p-8 rounded-2xl shadow-xl">
-      <h2 className="text-3xl font-bold text-gold-700 dark:text-gold-300 mb-6">Create Account</h2>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gold-50 to-white dark:from-gray-900 dark:to-gray-800 px-4 py-12">
+      <div className="w-full max-w-md bg-white/90 dark:bg-gray-800/90 backdrop-blur rounded-2xl shadow-xl p-8">
+        <h2 className="text-3xl font-bold text-center text-gray-900 dark:text-white mb-6">
+          Create Account
+        </h2>
 
-      {error && (
-        <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg border border-red-200 dark:border-red-800">
-          {error}
-        </div>
-      )}
+        {error && (
+          <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
+            {error}
+          </div>
+        )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                First Name
+              </label>
+              <input
+                name="first_name"
+                value={form.first_name}
+                onChange={handleChange}
+                className="w-full p-3 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 focus:ring-2 focus:ring-gold-400 outline-none"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Last Name
+              </label>
+              <input
+                name="last_name"
+                value={form.last_name}
+                onChange={handleChange}
+                className="w-full p-3 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 focus:ring-2 focus:ring-gold-400 outline-none"
+                required
+              />
+            </div>
+          </div>
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">First Name</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Username
+            </label>
             <input
-              type="text"
-              name="first_name"
-              value={form.first_name}
+              name="username"
+              value={form.username}
               onChange={handleChange}
               className="w-full p-3 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 focus:ring-2 focus:ring-gold-400 outline-none"
-              placeholder="John"
               required
             />
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Last Name</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Email
+            </label>
             <input
-              type="text"
-              name="last_name"
-              value={form.last_name}
+              type="email"
+              name="email"
+              value={form.email}
               onChange={handleChange}
               className="w-full p-3 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 focus:ring-2 focus:ring-gold-400 outline-none"
-              placeholder="Doe"
               required
             />
           </div>
-        </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Username</label>
-          <input
-            type="text"
-            name="username"
-            value={form.username}
-            onChange={handleChange}
-            className="w-full p-3 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 focus:ring-2 focus:ring-gold-400 outline-none"
-            placeholder="johndoe"
-            required
-          />
-        </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Phone Number
+            </label>
+            <input
+              name="phone_number"
+              value={form.phone_number}
+              onChange={handleChange}
+              className="w-full p-3 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 focus:ring-2 focus:ring-gold-400 outline-none"
+            />
+          </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
-          <input
-            type="email"
-            name="email"
-            value={form.email}
-            onChange={handleChange}
-            className="w-full p-3 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 focus:ring-2 focus:ring-gold-400 outline-none"
-            placeholder="john@example.com"
-            required
-          />
-        </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Password
+            </label>
+            <input
+              type="password"
+              name="password"
+              value={form.password}
+              onChange={handleChange}
+              className="w-full p-3 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 focus:ring-2 focus:ring-gold-400 outline-none"
+              required
+            />
+          </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Phone Number</label>
-          <input
-            type="tel"
-            name="phone_number"
-            value={form.phone_number}
-            onChange={handleChange}
-            className="w-full p-3 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 focus:ring-2 focus:ring-gold-400 outline-none"
-            placeholder="+254 700 123456"
-          />
-        </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              I am a...
+            </label>
+            <select
+              name="role"
+              value={form.role}
+              onChange={handleChange}
+              className="w-full p-3 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 focus:ring-2 focus:ring-gold-400 outline-none"
+            >
+              <option value="client">Client - I want to hire</option>
+              <option value="freelancer">Freelancer - I want to work</option>
+              <option value="both">Both - I want to hire and work</option>
+            </select>
+          </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
-          <input
-            type="password"
-            name="password"
-            value={form.password}
-            onChange={handleChange}
-            className="w-full p-3 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 focus:ring-2 focus:ring-gold-400 outline-none"
-            placeholder="Min. 6 characters"
-            required
-            minLength="6"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">I am a...</label>
-          <select
-            name="role"
-            value={form.role}
-            onChange={handleChange}
-            className="w-full p-3 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 focus:ring-2 focus:ring-gold-400 outline-none"
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-gold-600 hover:bg-gold-700 text-white font-semibold py-3 rounded-lg transition disabled:opacity-50"
           >
-            <option value="client">Client - I want to hire</option>
-            <option value="freelancer">Freelancer - I want to work</option>
-            <option value="both">Both - I want to hire and work</option>
-          </select>
+            {loading ? 'Creating account...' : 'Create Account'}
+          </button>
+        </form>
+
+        <div className="my-6 flex items-center">
+          <div className="flex-1 border-t border-gray-300 dark:border-gray-600" />
+          <span className="px-4 text-sm text-gray-500">OR</span>
+          <div className="flex-1 border-t border-gray-300 dark:border-gray-600" />
         </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className={`w-full py-3 rounded-lg text-white font-semibold transition ${
-            loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-gold-600 hover:bg-gold-700'
-          }`}
-        >
-          {loading ? 'Creating account...' : 'Create Account'}
-        </button>
-      </form>
+        <div id="googleSignUpButton" className="flex justify-center" />
 
-      <div className="mt-4 flex items-center gap-4">
-        <hr className="flex-1 border-gold-200 dark:border-gold-700" />
-        <span className="text-sm text-gray-500 dark:text-gray-400">OR</span>
-        <hr className="flex-1 border-gold-200 dark:border-gold-700" />
+        <p className="mt-6 text-center text-sm text-gray-600 dark:text-gray-400">
+          Already have an account?{' '}
+          <Link to="/login" className="text-gold-600 hover:underline font-medium">
+            Login
+          </Link>
+        </p>
       </div>
-
-      <div id="googleSignUpButton" className="mt-4 w-full"></div>
-
-      <p className="mt-4 text-center text-gray-600 dark:text-gray-400">
-        Already have an account?{' '}
-        <Link to="/login" className="text-gold-600 hover:underline">Login</Link>
-      </p>
     </div>
   );
 };

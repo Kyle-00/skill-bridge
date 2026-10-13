@@ -27,12 +27,18 @@ const Login = () => {
           token: response.credential,
           role: 'both',
         });
+
         dispatch(setCredentials({
           user: res.data.user,
           token: res.data.access,
           refresh: res.data.refresh,
         }));
-        navigate(res.data.user?.is_superuser ? '/admin' : '/dashboard');
+
+        if (res.data.is_new_user) {
+          navigate('/choose-role');
+        } else {
+          navigate(res.data.user?.is_superuser ? '/admin' : '/dashboard');
+        }
       } catch {
         setError('Google sign-in failed. Please try again.');
       } finally {
@@ -79,7 +85,6 @@ const Login = () => {
         refresh: refreshToken,
       }));
 
-      // Redirect based on role
       navigate(userRes.data.is_superuser ? '/admin' : '/dashboard');
     } catch (err) {
       setError(err.response?.data?.detail || 'Invalid email or password.');
@@ -89,55 +94,69 @@ const Login = () => {
   };
 
   return (
-    <div className="max-w-md mx-auto mt-20 glass p-8 rounded-2xl shadow-xl">
-      <h2 className="text-3xl font-bold text-gold-700 dark:text-gold-300 mb-6">Sign In</h2>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gold-50 to-white dark:from-gray-900 dark:to-gray-800 px-4">
+      <div className="w-full max-w-md bg-white/90 dark:bg-gray-800/90 backdrop-blur rounded-2xl shadow-xl p-8">
+        <h2 className="text-3xl font-bold text-center text-gray-900 dark:text-white mb-6">
+          Sign In
+        </h2>
 
-      {error && (
-        <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg border border-red-200 dark:border-red-800">
-          {error}
+        {error && (
+          <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Email or Username
+            </label>
+            <input
+              type="text"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full p-3 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 focus:ring-2 focus:ring-gold-400 outline-none"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Password
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full p-3 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 focus:ring-2 focus:ring-gold-400 outline-none"
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-gold-600 hover:bg-gold-700 text-white font-semibold py-3 rounded-lg transition disabled:opacity-50"
+          >
+            {loading ? 'Signing in...' : 'Sign In'}
+          </button>
+        </form>
+
+        <div className="my-6 flex items-center">
+          <div className="flex-1 border-t border-gray-300 dark:border-gray-600" />
+          <span className="px-4 text-sm text-gray-500">OR</span>
+          <div className="flex-1 border-t border-gray-300 dark:border-gray-600" />
         </div>
-      )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <input
-          type="text"
-          placeholder="Email or Username"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full p-3 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 focus:ring-2 focus:ring-gold-400 outline-none"
-          required
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="w-full p-3 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 focus:ring-2 focus:ring-gold-400 outline-none"
-          required
-        />
-        <button
-          type="submit"
-          disabled={loading}
-          className={`w-full py-3 rounded-lg text-white font-semibold transition ${
-            loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-gold-600 hover:bg-gold-700'
-          }`}
-        >
-          {loading ? 'Signing in...' : 'Sign In'}
-        </button>
-      </form>
+        <div id="googleSignInButton" className="flex justify-center" />
 
-      <div className="mt-4 flex items-center gap-4">
-        <hr className="flex-1 border-gold-200 dark:border-gold-700" />
-        <span className="text-sm text-gray-500 dark:text-gray-400">OR</span>
-        <hr className="flex-1 border-gold-200 dark:border-gold-700" />
+        <p className="mt-6 text-center text-sm text-gray-600 dark:text-gray-400">
+          Don't have an account?{' '}
+          <Link to="/register" className="text-gold-600 hover:underline font-medium">
+            Register
+          </Link>
+        </p>
       </div>
-
-      <div id="googleSignInButton" className="mt-4 w-full"></div>
-
-      <p className="mt-4 text-center text-gray-600 dark:text-gray-400">
-        Don't have an account?{' '}
-        <Link to="/register" className="text-gold-600 hover:underline">Register</Link>
-      </p>
     </div>
   );
 };
