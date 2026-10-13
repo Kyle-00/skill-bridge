@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { FaSearch, FaPlus } from 'react-icons/fa';
 import api from '../../api/axiosConfig';
@@ -9,9 +9,8 @@ const ProjectList = ({ mine = false }) => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const user = useSelector((s) => s.auth.user);
-  const location = useLocation();
 
-  const isMine = mine || location.pathname.endsWith('/mine');
+  const isMine = mine;
 
   useEffect(() => {
     let cancelled = false;
@@ -19,7 +18,13 @@ const ProjectList = ({ mine = false }) => {
     const url = isMine && user?.id ? `projects/?client=${user.id}` : 'projects/';
 
     api.get(url)
-      .then((res) => { if (!cancelled) setProjects(res.data || []); })
+      .then((res) => {
+        if (!cancelled) {
+          // Handle both paginated and unpaginated responses
+          const data = res.data?.results || res.data;
+          setProjects(Array.isArray(data) ? data : []);
+        }
+      })
       .catch(() => { if (!cancelled) setProjects([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
 
@@ -75,7 +80,7 @@ const ProjectList = ({ mine = false }) => {
           </div>
           {!isMine && (
             <Link
-              to="/projects/post"
+              to="/projects/new"
               className="bg-gold-600 text-white px-4 py-2 rounded-lg hover:bg-gold-700 transition flex items-center gap-2 text-sm whitespace-nowrap"
             >
               <FaPlus size={12} /> Post Project
@@ -92,7 +97,7 @@ const ProjectList = ({ mine = false }) => {
           {isMine && (
             <div className="mt-4">
               <Link
-                to="/projects/post"
+                to="/projects/new"
                 className="bg-gold-600 text-white px-6 py-2 rounded-lg hover:bg-gold-700 inline-block"
               >
                 Post your first project
@@ -144,7 +149,7 @@ const ProjectList = ({ mine = false }) => {
                     </Link>
                   )}
                   <Link
-                    to={isMine ? `/projects/${p.id}/manage` : `/projects/${p.id}`}
+                    to={isMine ? `/my-projects/${p.id}` : `/projects/${p.id}`}
                     className="text-xs bg-gold-600 text-white px-3 py-1.5 rounded-full hover:bg-gold-700 transition"
                   >
                     {isMine ? 'Manage' : 'View'}
