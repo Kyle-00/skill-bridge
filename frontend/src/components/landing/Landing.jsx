@@ -42,7 +42,7 @@ const Landing = () => {
           <span className="text-gold-600 dark:text-gold-400">Global Opportunities</span>
         </motion.h1>
         <motion.p variants={fadeInUp} className="mt-6 text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-          SkillBridge connects freelancers and clients with lower fees, AI matching, and seamless payments - including M-Pesa.
+          SkillBridge connects freelancers and clients with lower fees, smart matching, and seamless payments - including M-Pesa.
         </motion.p>
         <motion.div variants={fadeInUp} className="mt-10 flex flex-wrap gap-4 justify-center">
           <Link to="/register" className="px-8 py-3 bg-gold-600 text-white rounded-full hover:bg-gold-700 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
@@ -70,7 +70,7 @@ const Landing = () => {
             { icon: FaCheckCircle, title: 'Lowest Fees', desc: '5-10% freelancer fee, 0% client fee - unmatched in the industry.' },
             { icon: FaShieldAlt, title: 'Secure Escrow', desc: 'Funds held safely until work is approved, with fair dispute resolution.' },
             { icon: FaGlobe, title: 'Global Payments', desc: 'M-Pesa, Stripe, Crypto, and bank transfers -  pay and get paid your way.' },
-            { icon: FaRocket, title: 'AI Matchmaking', desc: 'Smart, bias-aware algorithms that connect you with the right opportunities.' },
+            { icon: FaRocket, title: 'Smart Matching', desc: 'Transparent skill-based scoring that shows you exactly why a project fits.' },
             { icon: FaRegLightbulb, title: 'Smart Tools', desc: 'Automated invoicing, real-time chat, and analytics to grow your business.' },
             { icon: FaHandshake, title: 'Fair Reviews', desc: 'Multi-dimensional ratings that build trust and reward quality.' },
           ].map((feature, i) => (
@@ -101,7 +101,7 @@ const Landing = () => {
         <div className="grid md:grid-cols-3 gap-8">
           {[
             { step: '1', title: 'Create Your Profile', desc: 'Set up your freelancer or client profile with skills, portfolio, and rates.' },
-            { step: '2', title: 'Find Work or Hire', desc: 'Browse gigs, post projects, or get AI-matched with the best talent.' },
+            { step: '2', title: 'Find Work or Hire', desc: 'Browse gigs, post projects, or get matched with the best talent.' },
             { step: '3', title: 'Get Paid Securely', desc: 'Milestone-based escrow with M-Pesa, Stripe, or bank transfer - fast and safe.' },
           ].map((item, i) => (
             <motion.div key={i} variants={fadeInUp} className="text-center">
@@ -131,8 +131,8 @@ const Landing = () => {
           <div className="glass p-6 rounded-2xl shadow-lg flex items-start gap-4">
             <div className="text-3xl text-gold-500 shrink-0"><FaChartLine /></div>
             <div>
-              <h3 className="text-xl font-semibold text-gold-800 dark:text-gold-200">AI-Powered Matching</h3>
-              <p className="text-gray-600 dark:text-gray-400">Our bias-aware algorithms reduce spam and connect you with truly relevant work.</p>
+              <h3 className="text-xl font-semibold text-gold-800 dark:text-gold-200">Transparent Scoring</h3>
+              <p className="text-gray-600 dark:text-gray-400">Skill-based scoring that shows you exactly why a project fits, reducing spam and bias.</p>
             </div>
           </div>
           <div className="glass p-6 rounded-2xl shadow-lg flex items-start gap-4">
@@ -167,7 +167,7 @@ const Landing = () => {
           {[
             { name: 'Angel K.', role: 'Freelance Designer', quote: 'SkillBridge helped me find high-paying clients. The M-Pesa integration is a game-changer!' },
             { name: 'Kyle K.', role: 'Startup Founder', quote: 'I found top-tier developers quickly. The escrow system gave me peace of mind.' },
-            { name: 'Jay B.', role: 'Software Engineer', quote: 'The AI matching saved me hours of searching. I love the low fees!' },
+            { name: 'Jay B.', role: 'Software Engineer', quote: 'The smart matching saved me hours of searching. I love the low fees!' },
           ].map((testimonial, i) => (
             <motion.div key={i} variants={fadeInUp} className="glass p-6 rounded-2xl shadow-lg hover:shadow-xl transition">
               <div className="flex text-gold-400 mb-3">
@@ -188,7 +188,7 @@ const Landing = () => {
             Ready to Build Your Future?
           </h2>
           <p className="mt-4 text-gray-600 dark:text-gray-400 text-lg">
-            Join thousands of freelancers and clients who trust SkillBridge.
+            Be one of the first freelancers on SkillBridge — early members get lifetime reduced fees.
           </p>
           <Link
             to="/register"
