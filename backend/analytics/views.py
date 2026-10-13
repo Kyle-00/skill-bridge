@@ -48,7 +48,6 @@ class AdminPlatformStatsView(APIView):
             )
         )
 
-        # Recent platform activity
         recent_orders = list(
             Order.objects.order_by('-created_at')[:5].values(
                 'id', 'status', 'total_amount', 'created_at', 'client__username', 'freelancer__username'
@@ -88,7 +87,6 @@ class FreelancerStatsView(APIView):
     def get(self, request):
         user = request.user
 
-        # Earnings per month for the last 6 months
         monthly = (
             WalletTransaction.objects.filter(
                 wallet__user=user,
@@ -109,7 +107,6 @@ class FreelancerStatsView(APIView):
             labels.append(d.strftime('%b'))
         earnings_series = [round(monthly_map.get(l, 0), 2) for l in labels]
 
-        # All-time earnings
         all_time_earnings = WalletTransaction.objects.filter(
             wallet__user=user,
             transaction_type='escrow',
@@ -145,20 +142,20 @@ class FreelancerStatsView(APIView):
             disputes__status='resolved_refund'
         ).count()
 
-        # Recent activity (recent orders)
         recent_orders = list(
             Order.objects.filter(freelancer=user).order_by('-created_at')[:5].values(
                 'id', 'status', 'total_amount', 'created_at', 'client__username'
             )
         )
 
-        # Profile completion calculation
-        profile = user.freelancer_profile
+        # Updated profile completion logic to match actual model fields
+        profile = getattr(user, 'freelancer_profile', None)
         completion = 0
-        if profile.bio: completion += 25
-        if profile.skills: completion += 25
-        if profile.portfolio_url: completion += 25
-        if user.profile_picture: completion += 25
+        if profile:
+            if profile.title: completion += 25
+            if profile.overview: completion += 25
+            if profile.skills: completion += 25
+            if profile.portfolio: completion += 25
 
         return Response({
             'earnings': {'labels': labels, 'series': earnings_series},
@@ -211,7 +208,6 @@ class ClientStatsView(APIView):
             total=Sum('total_amount')
         )['total'] or 0
 
-        # Recent activity (recent projects and orders)
         recent_projects = list(
             Project.objects.filter(client=user).order_by('-created_at')[:5].values(
                 'id', 'title', 'status', 'created_at'
