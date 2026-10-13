@@ -5,14 +5,11 @@ from .views import (
 )
 
 router = DefaultRouter()
+router.register(r'projects', ProjectViewSet, basename='project')
 router.register(r'proposals', ProposalViewSet, basename='proposal')
 router.register(r'milestones', MilestoneViewSet, basename='milestone')
-router.register(r'', ProjectViewSet, basename='project')
-
-admin_router = DefaultRouter()
-admin_router.register(r'', AdminProjectViewSet, basename='admin-project')
+router.register(r'admin/projects', AdminProjectViewSet, basename='admin-project')
 
 urlpatterns = [
-    path('admin/', include(admin_router.urls)),
     path('', include(router.urls)),
 ]
