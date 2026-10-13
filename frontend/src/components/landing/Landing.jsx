@@ -28,7 +28,8 @@ const staggerContainer = {
 
 const Landing = () => {
   return (
-    <div className="bg-linear-to-br from-white via-gold-50/30 to-white dark:from-gray-900 dark:via-gold-950/20 dark:to-gray-900 min-h-screen overflow-hidden">
+    // Changed from gradient to pure white/black
+    <div className="bg-white dark:bg-black min-h-screen overflow-hidden">
       {/* Hero */}
       <motion.section
         initial="hidden"
