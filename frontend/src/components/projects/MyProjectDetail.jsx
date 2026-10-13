@@ -66,7 +66,7 @@ const MyProjectDetail = () => {
       <div className="p-6 max-w-3xl mx-auto text-center">
         <p className="text-red-600 dark:text-red-400 mb-4">{error || 'Project not found.'}</p>
         <button
-          onClick={() => navigate('/projects/mine')}
+          onClick={() => navigate('/my-projects')}
           className="bg-gold-600 text-white px-6 py-2 rounded-lg hover:bg-gold-700"
         >
           Back to My Projects
@@ -84,7 +84,7 @@ const MyProjectDetail = () => {
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <button
-        onClick={() => navigate('/projects/mine')}
+        onClick={() => navigate('/my-projects')}
         className="flex items-center gap-2 text-sm text-gold-600 hover:underline mb-4"
       >
         <FaArrowLeft /> Back to My Projects
