@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FaSearch } from 'react-icons/fa';
+import { useSelector } from 'react-redux';
 import api from '../../api/axiosConfig';
 
 const FindWork = () => {
+  const user = useSelector((s) => s.auth.user);
+  const isFreelancer = user && ['freelancer', 'both'].includes(user.role);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -11,13 +14,15 @@ const FindWork = () => {
   useEffect(() => {
     let cancelled = false;
 
-    api.get('projects/?status=open')
+    const url = isFreelancer ? 'matching/projects/' : 'projects/?status=open';
+
+    api.get(url)
       .then((res) => { if (!cancelled) setProjects(res.data || []); })
       .catch(() => { if (!cancelled) setProjects([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
-  }, []);
+  }, [isFreelancer]);
 
   const filtered = projects.filter(
     (p) =>
@@ -41,7 +46,9 @@ const FindWork = () => {
             Find Work
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Open projects from clients looking for talent.
+            {isFreelancer
+              ? 'Ranked by how well each project matches your skills.'
+              : 'Open projects from clients looking for talent.'}
           </p>
         </div>
         <div className="relative w-full sm:w-64">
@@ -67,15 +74,34 @@ const FindWork = () => {
               key={p.id}
               className="glass p-5 rounded-2xl shadow-lg hover:shadow-xl transition flex flex-col"
             >
-              <h3 className="text-lg font-semibold text-gold-800 dark:text-gold-200 line-clamp-2">
-                {p.title}
-              </h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {p.category}
-              </p>
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="text-lg font-semibold text-gold-800 dark:text-gold-200 line-clamp-2">
+                  {p.title}
+                </h3>
+                {isFreelancer && typeof p.match_score === 'number' && (
+                  <span
+                    title={p.match_reasons?.join('\n')}
+                    className={`shrink-0 text-xs font-bold px-2 py-1 rounded-full ${
+                      p.match_score >= 60
+                        ? 'bg-gold-500 text-white'
+                        : p.match_score >= 30
+                          ? 'bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-300'
+                          : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+                    }`}
+                  >
+                    {p.match_score}% match
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{p.category}</p>
               <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 flex-1 line-clamp-3">
                 {p.description}
               </p>
+              {isFreelancer && p.match_reasons?.length > 0 && (
+                <p className="text-xs text-gold-700 dark:text-gold-300 mt-2 line-clamp-1">
+                  {p.match_reasons[0]}
+                </p>
+              )}
               <div className="flex items-center justify-between mt-4 pt-3 border-t border-gold-200 dark:border-gold-800">
                 <span className="text-gold-600 font-bold text-sm">
                   ${p.budget_min}-${p.budget_max}
