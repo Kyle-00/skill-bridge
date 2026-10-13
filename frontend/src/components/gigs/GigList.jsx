@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { FaSearch, FaPlus } from 'react-icons/fa';
 import api from '../../api/axiosConfig';
@@ -9,9 +9,8 @@ const GigList = ({ mine = false }) => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const user = useSelector((s) => s.auth.user);
-  const location = useLocation();
 
-  const isMine = mine || location.pathname.endsWith('/mine');
+  const isMine = mine;
 
   useEffect(() => {
     let cancelled = false;
@@ -19,7 +18,13 @@ const GigList = ({ mine = false }) => {
     const url = isMine && user?.id ? `gigs/?freelancer=${user.id}` : 'gigs/';
 
     api.get(url)
-      .then((res) => { if (!cancelled) setGigs(res.data || []); })
+      .then((res) => {
+        if (!cancelled) {
+          // Handle both paginated and unpaginated responses
+          const data = res.data?.results || res.data;
+          setGigs(Array.isArray(data) ? data : []);
+        }
+      })
       .catch(() => { if (!cancelled) setGigs([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
 
@@ -71,7 +76,7 @@ const GigList = ({ mine = false }) => {
           </div>
           {!isMine && (
             <Link
-              to="/gigs/create"
+              to="/create-gig"
               className="bg-gold-600 text-white px-4 py-2 rounded-lg hover:bg-gold-700 transition flex items-center gap-2 text-sm whitespace-nowrap"
             >
               <FaPlus size={12} /> Create Gig
@@ -88,7 +93,7 @@ const GigList = ({ mine = false }) => {
           {isMine && (
             <div className="mt-4">
               <Link
-                to="/gigs/create"
+                to="/create-gig"
                 className="bg-gold-600 text-white px-6 py-2 rounded-lg hover:bg-gold-700 inline-block"
               >
                 Create your first gig
