@@ -11,7 +11,7 @@ const ClientDashboard = () => {
   const user = useSelector((state) => state.auth.user);
   const [stats, setStats] = useState({
     balance: 0, activeProjects: 0, openProposals: 0,
-    pendingMilestones: 0, totalSpent: 0,
+    pendingMilestones: 0, totalSpent: 0, recentActivity: { projects: [], orders: [] },
   });
   const [loading, setLoading] = useState(true);
 
@@ -19,12 +19,27 @@ const ClientDashboard = () => {
     let cancelled = false;
     const load = async () => {
       try {
-        const w = await api.get('wallet/balance/');
-        if (!cancelled) {
-          setStats((s) => ({ ...s, balance: parseFloat(w.data?.balance) || 0 }));
+        const [w, a] = await Promise.all([
+          api.get('wallet/balance/'),
+          api.get('analytics/client-stats/').catch(() => null),
+        ]);
+        if (cancelled) return;
+        setStats((s) => ({
+          ...s,
+          balance: parseFloat(w.data?.balance) || 0,
+        }));
+        if (a?.data) {
+          setStats((s) => ({
+            ...s,
+            activeProjects: a.data.active_projects || 0,
+            openProposals: a.data.open_proposals || 0,
+            pendingMilestones: a.data.pending_milestones || 0,
+            totalSpent: a.data.total_spent || 0,
+            recentActivity: a.data.recent_activity || { projects: [], orders: [] },
+          }));
         }
       } catch (err) {
-        console.warn('Balance fetch failed:', err);
+        console.warn('Fetch failed:', err);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -56,7 +71,7 @@ const ClientDashboard = () => {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link to="/projects/post" className="bg-gold-600 text-white px-4 py-2 rounded-lg hover:bg-gold-700 transition flex items-center gap-2 text-sm">
+          <Link to="/projects/new" className="bg-gold-600 text-white px-4 py-2 rounded-lg hover:bg-gold-700 transition flex items-center gap-2 text-sm">
             <FaPlus size={12} /> Post Project
           </Link>
           <Link to="/hire-talent" className="border border-gold-600 text-gold-600 px-4 py-2 rounded-lg hover:bg-gold-50 dark:hover:bg-gold-900/30 transition flex items-center gap-2 text-sm">
@@ -78,9 +93,54 @@ const ClientDashboard = () => {
           <h2 className="text-lg font-semibold text-gold-700 dark:text-gold-300 mb-4 flex items-center gap-2">
             <FaChartLine /> Recent Activity
           </h2>
-          <p className="text-gray-500 dark:text-gray-400 text-sm text-center py-8">
-            No activity yet. Post a project to get started.
-          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-3 uppercase tracking-wide">Recent Projects</h3>
+              {stats.recentActivity.projects.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-4">No recent projects.</p>
+              ) : (
+                <div className="space-y-2">
+                  {stats.recentActivity.projects.map((p) => (
+                    <div key={p.id} className="flex justify-between items-center p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{p.title}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {new Date(p.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <span className="text-xs px-2 py-1 rounded-full bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-300 capitalize shrink-0">
+                        {p.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-3 uppercase tracking-wide">Recent Orders</h3>
+              {stats.recentActivity.orders.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-4">No recent orders.</p>
+              ) : (
+                <div className="space-y-2">
+                  {stats.recentActivity.orders.map((o) => (
+                    <div key={o.id} className="flex justify-between items-center p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
+                          Order #{o.id} - {o.freelancer__username}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          ${parseFloat(o.total_amount).toFixed(2)}
+                        </p>
+                      </div>
+                      <span className="text-xs px-2 py-1 rounded-full bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-300 capitalize shrink-0">
+                        {o.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="space-y-4">
@@ -89,8 +149,8 @@ const ClientDashboard = () => {
               Client Quick Actions
             </h3>
             <div className="space-y-2">
-              <Action to="/projects/post" icon={FaPlus} label="Post a Project" />
-              <Action to="/projects" icon={FaProjectDiagram} label="My Projects" />
+              <Action to="/projects/new" icon={FaPlus} label="Post a Project" />
+              <Action to="/my-projects" icon={FaProjectDiagram} label="My Projects" />
               <Action to="/hire-talent" icon={FaEye} label="Browse Freelancers" />
               <Action to="/wallet/deposit" icon={FaArrowUp} label="Add Funds" />
             </div>
