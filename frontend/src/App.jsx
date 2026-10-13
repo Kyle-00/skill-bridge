@@ -70,7 +70,8 @@ function App() {
       <ScrollToTop />
       <BackToTop />
       <div className={theme === 'dark' ? 'dark' : ''}>
-        <div className="min-h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-white flex flex-col">
+        {/* Changed bg-gray-900 to bg-black for pure black dark mode */}
+        <div className="min-h-screen bg-white dark:bg-black text-gray-900 dark:text-white flex flex-col">
           <Navbar />
           <Sidebar />
           <main className="flex-1 pt-16">
