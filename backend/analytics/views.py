@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 from accounts.models import User
 from gigs.models import Gig
 from orders.models import Order, Transaction
-from projects.models import Project
+from projects.models import Project, Proposal
 from reviews.models import Review
 from wallet.models import Transaction as WalletTransaction
 
@@ -34,6 +34,8 @@ class AdminPlatformStatsView(APIView):
 
         total_orders = Order.objects.count()
         completed_orders = Order.objects.filter(status='completed').count()
+        open_disputes = Order.objects.filter(status='disputed').count()
+        
         platform_revenue = Transaction.objects.filter(
             status='success'
         ).aggregate(total=Sum('fee'))['total'] or 0
@@ -43,6 +45,18 @@ class AdminPlatformStatsView(APIView):
         recent_users = list(
             User.objects.order_by('-created_at')[:5].values(
                 'id', 'username', 'email', 'role', 'created_at'
+            )
+        )
+
+        # Recent platform activity
+        recent_orders = list(
+            Order.objects.order_by('-created_at')[:5].values(
+                'id', 'status', 'total_amount', 'created_at', 'client__username', 'freelancer__username'
+            )
+        )
+        recent_gigs = list(
+            Gig.objects.order_by('-created_at')[:5].values(
+                'id', 'title', 'created_at', 'freelancer__username'
             )
         )
 
@@ -58,13 +72,17 @@ class AdminPlatformStatsView(APIView):
             'orders': {'total': total_orders, 'completed': completed_orders},
             'revenue': float(platform_revenue),
             'avg_rating': round(avg_rating, 2),
+            'open_disputes': open_disputes,
             'recent_users': recent_users,
+            'recent_activity': {
+                'orders': recent_orders,
+                'gigs': recent_gigs,
+            }
         })
 
 
 class FreelancerStatsView(APIView):
     """Earnings, ratings, and activity for the logged-in freelancer."""
-
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -85,12 +103,18 @@ class FreelancerStatsView(APIView):
         )
         monthly_map = {m['month'].strftime('%b'): float(m['total']) for m in monthly}
 
-        # Build a full 6-month axis so the chart never has gaps
         labels = []
         for i in range(5, -1, -1):
             d = timezone.now() - timedelta(days=30 * i)
             labels.append(d.strftime('%b'))
         earnings_series = [round(monthly_map.get(l, 0), 2) for l in labels]
+
+        # All-time earnings
+        all_time_earnings = WalletTransaction.objects.filter(
+            wallet__user=user,
+            transaction_type='escrow',
+            status='success',
+        ).aggregate(total=Sum('amount'))['total'] or 0
 
         completed = Order.objects.filter(freelancer=user, status='completed')
         total = Order.objects.filter(freelancer=user).count()
@@ -104,7 +128,6 @@ class FreelancerStatsView(APIView):
             count=Count('id'),
         )
 
-        # Top gigs by completed revenue
         top_gigs = (
             Order.objects.filter(
                 freelancer=user, status='completed', gig__isnull=False
@@ -122,9 +145,24 @@ class FreelancerStatsView(APIView):
             disputes__status='resolved_refund'
         ).count()
 
+        # Recent activity (recent orders)
+        recent_orders = list(
+            Order.objects.filter(freelancer=user).order_by('-created_at')[:5].values(
+                'id', 'status', 'total_amount', 'created_at', 'client__username'
+            )
+        )
+
+        # Profile completion calculation
+        profile = user.freelancer_profile
+        completion = 0
+        if profile.bio: completion += 25
+        if profile.skills: completion += 25
+        if profile.portfolio_url: completion += 25
+        if user.profile_picture: completion += 25
+
         return Response({
             'earnings': {'labels': labels, 'series': earnings_series},
-            'lifetime_earnings': round(sum(earnings_series), 2),
+            'lifetime_earnings': round(float(all_time_earnings), 2),
             'orders': {
                 'total': total,
                 'completed': done_count,
@@ -150,4 +188,48 @@ class FreelancerStatsView(APIView):
             ],
             'pending_milestone_reviews': pending_milestones,
             'disputes_lost': disputes_lost,
+            'profile_completion': completion,
+            'recent_activity': recent_orders,
+        })
+
+
+class ClientStatsView(APIView):
+    """Stats and activity for the logged-in client."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        
+        active_projects = Project.objects.filter(client=user, status='in_progress').count()
+        open_proposals = Proposal.objects.filter(project__client=user).count()
+        
+        pending_milestones = user.orders_as_client.filter(
+            order_milestones__status='submitted'
+        ).distinct().count()
+        
+        total_spent = Order.objects.filter(client=user, status='completed').aggregate(
+            total=Sum('total_amount')
+        )['total'] or 0
+
+        # Recent activity (recent projects and orders)
+        recent_projects = list(
+            Project.objects.filter(client=user).order_by('-created_at')[:5].values(
+                'id', 'title', 'status', 'created_at'
+            )
+        )
+        recent_orders = list(
+            Order.objects.filter(client=user).order_by('-created_at')[:5].values(
+                'id', 'status', 'total_amount', 'created_at', 'freelancer__username'
+            )
+        )
+
+        return Response({
+            'active_projects': active_projects,
+            'open_proposals': open_proposals,
+            'pending_milestones': pending_milestones,
+            'total_spent': round(float(total_spent), 2),
+            'recent_activity': {
+                'projects': recent_projects,
+                'orders': recent_orders,
+            }
         })
