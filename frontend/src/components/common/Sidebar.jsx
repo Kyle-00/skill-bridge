@@ -34,8 +34,9 @@ const Sidebar = () => {
     'px-3 pt-3 pb-1 text-xs font-semibold uppercase tracking-wider text-gold-600 dark:text-gold-400';
 
   return (
+    // Changed glass to bg-white dark:bg-black
     <aside
-      className={`fixed top-16 left-0 h-[calc(100vh-4rem)] glass border-r border-gold-200 dark:border-gold-700 transition-transform duration-300 w-64 z-40 overflow-y-auto ${
+      className={`fixed top-16 left-0 h-[calc(100vh-4rem)] bg-white dark:bg-black border-r border-gold-200 dark:border-gold-700 transition-transform duration-300 w-64 z-40 overflow-y-auto ${
         isOpen ? 'translate-x-0' : '-translate-x-full'
       }`}
     >
