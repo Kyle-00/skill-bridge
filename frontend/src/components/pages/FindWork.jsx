@@ -17,7 +17,15 @@ const FindWork = () => {
     const url = isFreelancer ? 'matching/projects/' : 'projects/?status=open';
 
     api.get(url)
-      .then((res) => { if (!cancelled) setProjects(res.data || []); })
+      .then((res) => {
+        if (!cancelled) {
+          // Handle both paginated and unpaginated responses
+          const data = res.data?.results || res.data;
+          // Strictly filter out any projects that are not open (prevents ghost projects)
+          const validProjects = Array.isArray(data) ? data.filter(p => p.status === 'open') : [];
+          setProjects(validProjects);
+        }
+      })
       .catch(() => { if (!cancelled) setProjects([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
 
