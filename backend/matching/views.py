@@ -17,6 +17,7 @@ class ProjectMatchesView(APIView):
         if request.user.role == 'client':
             return Response({'error': 'Clients do not get project matches.'}, status=400)
 
+        # Strictly filter by status='open' to prevent ghost projects
         projects = Project.objects.filter(status='open').order_by('-created_at')[:100]
         results = []
         for p in projects:
@@ -29,8 +30,9 @@ class ProjectMatchesView(APIView):
                 'budget_min': str(p.budget_min),
                 'budget_max': str(p.budget_max),
                 'deadline': p.deadline,
-                'client': p.client.username,
+                'client': p.client.username if p.client else 'Unknown',
                 'created_at': p.created_at,
+                'status': p.status,  # Include status for frontend filtering
                 'match_score': score,
                 'match_reasons': reasons,
             })
