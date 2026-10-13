@@ -3,12 +3,15 @@ from django.conf import settings
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
-def create_payment_intent(order, customer_email):
+def create_payment_intent(amount, order_id):
+    """
+    Creates a Stripe PaymentIntent.
+    Matches the call signature in orders/views.py: create_payment_intent(amount, order.id)
+    """
     intent = stripe.PaymentIntent.create(
-        amount=int(order.total_amount * 100),
+        amount=int(amount * 100),  # Convert to cents
         currency='usd',
-        customer_email=customer_email,
-        metadata={'order_id': order.id},
+        metadata={'order_id': order_id},
         payment_method_types=['card'],
     )
     return intent.client_secret
