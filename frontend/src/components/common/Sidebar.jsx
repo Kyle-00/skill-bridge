@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   FaHome, FaUser, FaBriefcase, FaComments, FaCog, FaSignOutAlt,
   FaWallet, FaUsers, FaUserShield, FaPlus, FaSearch, FaList,
-  FaShoppingCart,
+  FaShoppingCart, FaProjectDiagram, FaArrowUp,
 } from 'react-icons/fa';
 import { logout } from '../../store/authSlice';
 import { closeSidebar } from '../../store/sidebarSlice';
@@ -34,7 +34,6 @@ const Sidebar = () => {
     'px-3 pt-3 pb-1 text-xs font-semibold uppercase tracking-wider text-gold-600 dark:text-gold-400';
 
   return (
-    // Changed glass to bg-white dark:bg-black
     <aside
       className={`fixed top-16 left-0 h-[calc(100vh-4rem)] bg-white dark:bg-black border-r border-gold-200 dark:border-gold-700 transition-transform duration-300 w-64 z-40 overflow-y-auto ${
         isOpen ? 'translate-x-0' : '-translate-x-full'
@@ -57,15 +56,30 @@ const Sidebar = () => {
 
         {isAdmin && (
           <>
-            <div className="px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wider text-red-500 dark:text-red-400">
-              Admin
-            </div>
+            <div className={sectionLabel}>Admin Dashboard</div>
             <NavLink to="/admin" end className={linkClass}>
-              <FaUserShield /> Admin Dashboard
+              <FaUserShield /> Overview
             </NavLink>
             <NavLink to="/admin/users" className={linkClass}>
-              <FaUsers /> Users
+              <FaUsers /> Manage Users
             </NavLink>
+            <NavLink to="/admin/gigs" className={linkClass}>
+              <FaBriefcase /> Manage Gigs
+            </NavLink>
+            <NavLink to="/admin/projects" className={linkClass}>
+              <FaProjectDiagram /> Manage Projects
+            </NavLink>
+            <NavLink to="/admin/orders" className={linkClass}>
+              <FaShoppingCart /> View Orders
+            </NavLink>
+            <a
+              href="http://localhost:8000/admin/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 p-3 rounded-lg hover:bg-gold-50 dark:hover:bg-gold-900/50 text-gray-700 dark:text-gray-300 text-sm"
+            >
+              <FaArrowUp /> Django Admin
+            </a>
             <div className="border-t border-gold-200 dark:border-gold-700 my-2" />
           </>
         )}
