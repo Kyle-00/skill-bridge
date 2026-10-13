@@ -12,6 +12,7 @@ from .views import (
     AdminUserDetailView,
     FreelancerListView,
     EmailOrUsernameTokenObtainPairView,
+    ChooseRoleView,                       # <-- NEW
 )
 
 urlpatterns = [
@@ -20,6 +21,7 @@ urlpatterns = [
     path('login/', EmailOrUsernameTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('google/verify/', GoogleVerifyView.as_view(), name='google_verify'),
+    path('choose-role/', ChooseRoleView.as_view(), name='choose-role'),   # <-- NEW
 
     # Public listings
     path('freelancers/', FreelancerListView.as_view(), name='freelancer_list'),

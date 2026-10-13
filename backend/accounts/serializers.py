@@ -12,6 +12,26 @@ class UserSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['is_superuser', 'is_staff', 'trust_score', 'is_verified']
 
+    def update(self, instance, validated_data):
+        role = validated_data.get('role')
+        user = super().update(instance, validated_data)
+        if role:
+            create_role_resources(user, role)
+        return user
+
+
+def create_role_resources(user, role):
+    """Create the profile(s) and wallet that a role needs. Idempotent."""
+    if role in ('freelancer', 'both'):
+        FreelancerProfile.objects.get_or_create(user=user)
+    if role in ('client', 'both'):
+        ClientProfile.objects.get_or_create(user=user)
+    try:
+        from wallet.models import Wallet
+        Wallet.objects.get_or_create(user=user)
+    except Exception:
+        pass
+
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
