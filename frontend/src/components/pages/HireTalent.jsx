@@ -1,30 +1,48 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FaSearch, FaClock } from 'react-icons/fa';
+import { FaSearch, FaClock, FaFilter } from 'react-icons/fa';
 import api from '../../api/axiosConfig';
 
 const HireTalent = () => {
   const [gigs, setGigs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [priceFilter, setPriceFilter] = useState('');
 
   useEffect(() => {
     let cancelled = false;
 
     api.get('gigs/')
-      .then((res) => { if (!cancelled) setGigs(res.data || []); })
+      .then((res) => {
+        if (!cancelled) {
+          const data = res.data?.results || res.data;
+          setGigs(Array.isArray(data) ? data : []);
+        }
+      })
       .catch(() => { if (!cancelled) setGigs([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
   }, []);
 
-  const filtered = gigs.filter(
-    (g) =>
+  const categories = [...new Set(gigs.map((g) => g.category).filter(Boolean))];
+
+  const filtered = gigs.filter((g) => {
+    const matchesSearch =
       g.title?.toLowerCase().includes(search.toLowerCase()) ||
       g.category?.toLowerCase().includes(search.toLowerCase()) ||
-      g.freelancer_name?.toLowerCase().includes(search.toLowerCase())
-  );
+      g.freelancer_name?.toLowerCase().includes(search.toLowerCase());
+    
+    const matchesCategory = categoryFilter ? g.category === categoryFilter : true;
+
+    let matchesPrice = true;
+    if (priceFilter === 'low') matchesPrice = g.price < 100;
+    else if (priceFilter === 'mid') matchesPrice = g.price >= 100 && g.price <= 500;
+    else if (priceFilter === 'high') matchesPrice = g.price > 500;
+
+    return matchesSearch && matchesCategory && matchesPrice;
+  });
 
   if (loading) {
     return (
@@ -45,11 +63,11 @@ const HireTalent = () => {
             Services offered by freelancers on SkillBridge.
           </p>
         </div>
-        <div className="relative w-full sm:w-64">
-          <FaSearch
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-            size={12}
-          />
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+        <div className="relative flex-1">
+          <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={12} />
           <input
             type="text"
             placeholder="Search gigs or freelancers..."
@@ -58,11 +76,36 @@ const HireTalent = () => {
             className="w-full pl-9 pr-3 py-2 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 outline-none focus:ring-2 focus:ring-gold-400"
           />
         </div>
+        <div className="relative w-full sm:w-48">
+          <FaFilter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={12} />
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 outline-none focus:ring-2 focus:ring-gold-400 appearance-none"
+          >
+            <option value="">All Categories</option>
+            {categories.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
+        <div className="relative w-full sm:w-48">
+          <select
+            value={priceFilter}
+            onChange={(e) => setPriceFilter(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-gold-200 dark:border-gold-700 bg-white/80 dark:bg-gray-800/80 outline-none focus:ring-2 focus:ring-gold-400 appearance-none"
+          >
+            <option value="">Any Price</option>
+            <option value="low">Under $100</option>
+            <option value="mid">$100 - $500</option>
+            <option value="high">Over $500</option>
+          </select>
+        </div>
       </div>
 
       {filtered.length === 0 ? (
         <div className="glass p-8 rounded-2xl text-center text-gray-500 dark:text-gray-400">
-          No gigs available right now.
+          No gigs match your filters right now.
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
