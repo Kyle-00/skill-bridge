@@ -26,9 +26,67 @@ const OrderDetail = () => {
     deliverable_file: null,
   });
   const [review, setReview] = useState({
-    quality: 5, communication: 5, timeliness: 5, professionalism: 5, comment: '',
+    quality: 5,
+    communication: 5,
+    timeliness: 5,
+    professionalism: 5,
+    comment: '',
   });
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
+
+  // -----------------------------------------------------------------------
+  // Load order + milestones
+  // All setState calls happen inside async callbacks so we never trigger
+  // the "setState synchronously within an effect" warning.
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await api.get(`orders/${id}/`);
+        if (!cancelled) setOrder(res.data);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.response?.data?.detail || 'Order not found.');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    (async () => {
+      try {
+        const res = await api.get(`orders/${id}/milestones/`);
+        if (!cancelled) {
+          setMilestones(Array.isArray(res.data) ? res.data : []);
+        }
+      } catch {
+        if (!cancelled) setMilestones([]);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  // -----------------------------------------------------------------------
+  // Auto-open the Fund Escrow modal if ?fund=1 is present
+  // Deferred with setTimeout so setState is not called synchronously.
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    if (
+      searchParams.get('fund') === '1' &&
+      order &&
+      !order.escrow_funded
+    ) {
+      const timer = setTimeout(() => {
+        setShowFundModal(true);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams, order]);
 
   const fetchOrder = async () => {
     try {
@@ -36,8 +94,6 @@ const OrderDetail = () => {
       setOrder(res.data);
     } catch (err) {
       setError(err.response?.data?.detail || 'Order not found.');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -49,19 +105,6 @@ const OrderDetail = () => {
       setMilestones([]);
     }
   };
-
-  useEffect(() => {
-    fetchOrder();
-    fetchMilestones();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
-
-  // Auto-open the Fund Escrow modal if ?fund=1 is present
-  useEffect(() => {
-    if (searchParams.get('fund') === '1' && order && !order.escrow_funded) {
-      setShowFundModal(true);
-    }
-  }, [searchParams, order]);
 
   const reload = async () => {
     await fetchOrder();
@@ -98,7 +141,10 @@ const OrderDetail = () => {
     if (deliverable.deliverable_file) {
       const formData = new FormData();
       formData.append('deliverable_file', deliverable.deliverable_file);
-      formData.append('deliverable_message', deliverable.deliverable_message || '');
+      formData.append(
+        'deliverable_message',
+        deliverable.deliverable_message || ''
+      );
       formData.append('deliverable_url', deliverable.deliverable_url || '');
       runAction('submit-work', formData);
     } else {
@@ -110,7 +156,12 @@ const OrderDetail = () => {
   };
 
   const handleApprove = () => {
-    if (!window.confirm('Approve this work and release funds to the freelancer?')) return;
+    if (
+      !window.confirm(
+        'Approve this work and release funds to the freelancer?'
+      )
+    )
+      return;
     runAction('approve-work');
   };
 
@@ -196,13 +247,15 @@ const OrderDetail = () => {
             </p>
           </div>
           <div className="flex gap-2 items-center flex-wrap">
-            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-              order.status === 'completed'
-                ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
-                : order.status === 'disputed'
-                ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
-                : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300'
-            }`}>
+            <span
+              className={`px-3 py-1 rounded-full text-sm font-medium ${
+                order.status === 'completed'
+                  ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
+                  : order.status === 'disputed'
+                  ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                  : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300'
+              }`}
+            >
               {order.status}
             </span>
 
@@ -212,7 +265,9 @@ const OrderDetail = () => {
               className="flex items-center gap-2 bg-gold-600 text-white px-4 py-1.5 rounded-full hover:bg-gold-700 disabled:opacity-50 text-sm font-medium transition"
             >
               <FaComments size={12} />
-              {chatLoading ? 'Opening…' : `Chat ${isClient ? 'Freelancer' : 'Client'}`}
+              {chatLoading
+                ? 'Opening…'
+                : `Chat ${isClient ? 'Freelancer' : 'Client'}`}
             </button>
           </div>
         </div>
@@ -232,9 +287,11 @@ const OrderDetail = () => {
           </div>
           <div>
             <span className="text-gray-500">Escrow:</span>{' '}
-            <span className={`font-medium ${
-              order.escrow_funded ? 'text-green-600' : 'text-yellow-600'
-            }`}>
+            <span
+              className={`font-medium ${
+                order.escrow_funded ? 'text-green-600' : 'text-yellow-600'
+              }`}
+            >
               {order.escrow_funded ? 'Funded' : 'Not funded'}
             </span>
           </div>
@@ -261,7 +318,10 @@ const OrderDetail = () => {
                 placeholder="Deliverable URL (optional if uploading a file)"
                 value={deliverable.deliverable_url}
                 onChange={(e) =>
-                  setDeliverable((d) => ({ ...d, deliverable_url: e.target.value }))
+                  setDeliverable((d) => ({
+                    ...d,
+                    deliverable_url: e.target.value,
+                  }))
                 }
                 className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
               />
@@ -269,7 +329,8 @@ const OrderDetail = () => {
                 type="file"
                 onChange={(e) =>
                   setDeliverable((d) => ({
-                    ...d, deliverable_file: e.target.files[0] || null,
+                    ...d,
+                    deliverable_file: e.target.files[0] || null,
                   }))
                 }
                 className="w-full text-sm"
@@ -279,7 +340,8 @@ const OrderDetail = () => {
                 value={deliverable.deliverable_message}
                 onChange={(e) =>
                   setDeliverable((d) => ({
-                    ...d, deliverable_message: e.target.value,
+                    ...d,
+                    deliverable_message: e.target.value,
                   }))
                 }
                 className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
@@ -364,44 +426,60 @@ const OrderDetail = () => {
       <DisputePanel order={order} onChanged={reload} />
 
       {/* Review */}
-      {order.status === 'completed' && !reviewSubmitted && !order.has_review && (
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
-          <h2 className="text-lg font-semibold mb-4">Leave a Review</h2>
-          <form onSubmit={handleSubmitReview} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              {['quality', 'communication', 'timeliness', 'professionalism'].map((field) => (
-                <div key={field}>
-                  <label className="block text-sm capitalize mb-1">{field}</label>
-                  <select
-                    value={review[field]}
-                    onChange={(e) =>
-                      setReview((r) => ({ ...r, [field]: Number(e.target.value) }))
-                    }
-                    className="w-full p-2 rounded-lg border border-gray-200 dark:border-gray-700"
-                  >
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <option key={n} value={n}>{n}</option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-            </div>
-            <textarea
-              placeholder="Comment (optional)"
-              value={review.comment}
-              onChange={(e) => setReview((r) => ({ ...r, comment: e.target.value }))}
-              className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700"
-            />
-            <button
-              type="submit"
-              disabled={actionLoading}
-              className="bg-gold-600 hover:bg-gold-700 text-white px-5 py-2 rounded-lg disabled:opacity-50"
-            >
-              Submit Review
-            </button>
-          </form>
-        </div>
-      )}
+      {order.status === 'completed' &&
+        !reviewSubmitted &&
+        !order.has_review && (
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
+            <h2 className="text-lg font-semibold mb-4">Leave a Review</h2>
+            <form onSubmit={handleSubmitReview} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                {[
+                  'quality',
+                  'communication',
+                  'timeliness',
+                  'professionalism',
+                ].map((field) => (
+                  <div key={field}>
+                    <label className="block text-sm capitalize mb-1">
+                      {field}
+                    </label>
+                    <select
+                      value={review[field]}
+                      onChange={(e) =>
+                        setReview((r) => ({
+                          ...r,
+                          [field]: Number(e.target.value),
+                        }))
+                      }
+                      className="w-full p-2 rounded-lg border border-gray-200 dark:border-gray-700"
+                    >
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+              <textarea
+                placeholder="Comment (optional)"
+                value={review.comment}
+                onChange={(e) =>
+                  setReview((r) => ({ ...r, comment: e.target.value }))
+                }
+                className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700"
+              />
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="bg-gold-600 hover:bg-gold-700 text-white px-5 py-2 rounded-lg disabled:opacity-50"
+              >
+                Submit Review
+              </button>
+            </form>
+          </div>
+        )}
 
       {/* Fund Escrow Modal */}
       {showFundModal && (
