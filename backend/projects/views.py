@@ -1,9 +1,11 @@
-from django.db import models
 from decimal import Decimal
+from django.db import models
 from django.db import transaction as db_transaction
 from django.shortcuts import get_object_or_404
-from rest_framework import viewsets, permissions, filters, serializers
+from django.utils import timezone
+from rest_framework import viewsets, permissions, filters
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 
@@ -18,7 +20,13 @@ from .serializers import (
     MilestoneSerializer,
 )
 
-PLATFORM_FEE_RATE = Decimal('0.05')
+FREE_PROPOSAL_LIMIT = 5
+
+
+def get_platform_fee_rate(user):
+    if user and user.has_active_pro_plan():
+        return Decimal('0.03')
+    return Decimal('0.05')
 
 
 def get_or_create_room(user_a, user_b):
@@ -85,7 +93,8 @@ class ProjectViewSet(viewsets.ModelViewSet):
             project.save()
 
             total = Decimal(str(proposal.proposed_price))
-            fee = (total * PLATFORM_FEE_RATE).quantize(Decimal('0.01'))
+            fee_rate = get_platform_fee_rate(proposal.freelancer)
+            fee = (total * fee_rate).quantize(Decimal('0.01'))
             order = Order.objects.create(
                 order_type='project',
                 project=project,
@@ -105,13 +114,11 @@ class ProjectViewSet(viewsets.ModelViewSet):
             message=f'{client_name} accepted your proposal for "{project.title}"',
             target=f'/orders/{order.id}',
         )
-        return Response(
-            {
-                'message': 'Proposal accepted',
-                'order_id': order.id,
-                'chat_room_id': room.id,
-            }
-        )
+        return Response({
+            'message': 'Proposal accepted',
+            'order_id': order.id,
+            'chat_room_id': room.id,
+        })
 
     @action(detail=True, methods=['get'], url_path='milestones')
     def milestones(self, request, pk=None):
@@ -142,7 +149,22 @@ class ProposalViewSet(viewsets.ModelViewSet):
         ).distinct().order_by('-created_at')
 
     def perform_create(self, serializer):
-        serializer.save(freelancer=self.request.user)
+        user = self.request.user
+
+        # Free plan users: 5 proposals per calendar month
+        if not user.has_active_pro_plan():
+            month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            count = Proposal.objects.filter(
+                freelancer=user,
+                created_at__gte=month_start,
+            ).count()
+            if count >= FREE_PROPOSAL_LIMIT:
+                raise PermissionDenied(
+                    f'Free plan allows {FREE_PROPOSAL_LIMIT} proposals per month. '
+                    'Upgrade to Pro for unlimited proposals.'
+                )
+
+        serializer.save(freelancer=user)
 
 
 class MilestoneViewSet(viewsets.ModelViewSet):
@@ -160,10 +182,3 @@ class AdminProjectViewSet(viewsets.ModelViewSet):
     queryset = Project.objects.all().order_by('-created_at')
     serializer_class = ProjectSerializer
     permission_classes = [permissions.IsAdminUser]
-
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        status = self.request.query_params.get('status')
-        if status:
-            queryset = queryset.filter(status=status)
-        return queryset
