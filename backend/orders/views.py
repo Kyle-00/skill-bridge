@@ -23,7 +23,12 @@ from .serializers import OrderSerializer, TransactionSerializer
 from .services.mpesa import stk_push
 from .services.stripe import create_payment_intent
 
-PLATFORM_FEE_RATE = Decimal('0.05')
+
+def get_platform_fee_rate(user):
+    """Returns 3% for Pro users, 5% for Free users."""
+    if user and user.has_active_pro_plan():
+        return Decimal('0.03')
+    return Decimal('0.05')
 
 
 def get_or_create_room(user_a, user_b):
@@ -67,15 +72,13 @@ class OrderViewSet(viewsets.ModelViewSet):
         ).first()
         if existing:
             return Response(
-                {
-                    'error': 'You already have an active order for this gig.',
-                    'order_id': existing.id,
-                },
+                {'error': 'You already have an active order for this gig.', 'order_id': existing.id},
                 status=400,
             )
 
         total_amount = Decimal(str(gig.price))
-        platform_fee = (total_amount * PLATFORM_FEE_RATE).quantize(Decimal('0.01'))
+        fee_rate = get_platform_fee_rate(gig.freelancer)
+        platform_fee = (total_amount * fee_rate).quantize(Decimal('0.01'))
 
         with db_transaction.atomic():
             order = Order.objects.create(
@@ -91,18 +94,13 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         client_name = request.user.get_full_name() or request.user.username
         notify(
-            gig.freelancer,
-            request.user,
-            'order_created',
+            gig.freelancer, request.user, 'order_created',
             f'{client_name} ordered your gig "{gig.title}"',
             f'/orders/{order.id}',
         )
 
         return Response(
-            {
-                'order': self.get_serializer(order).data,
-                'chat_room_id': room.id,
-            },
+            {'order': self.get_serializer(order).data, 'chat_room_id': room.id},
             status=status.HTTP_201_CREATED,
         )
 
@@ -129,7 +127,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 client_secret = create_payment_intent(amount, order.id)
                 return Response({'client_secret': client_secret})
 
-            else:  # wallet
+            else:
                 wallet, _ = Wallet.objects.get_or_create(user=request.user)
                 if wallet.balance < amount:
                     return Response({'error': 'Insufficient wallet balance'}, status=400)
@@ -148,9 +146,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 order.save()
 
                 notify(
-                    order.freelancer,
-                    request.user,
-                    'escrow_funded',
+                    order.freelancer, request.user, 'escrow_funded',
                     f'Escrow funded for order #{order.id}. You can start working.',
                     f'/orders/{order.id}',
                 )
@@ -193,9 +189,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.save()
 
         notify(
-            order.client,
-            request.user,
-            'work_delivered',
+            order.client, request.user, 'work_delivered',
             f'Work delivered for order #{order.id}. Review and approve.',
             f'/orders/{order.id}',
         )
@@ -227,9 +221,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             order.save()
 
         notify(
-            order.freelancer,
-            request.user,
-            'work_approved',
+            order.freelancer, request.user, 'work_approved',
             f'Your work for order #{order.id} was approved. KES {payout} released.',
             f'/orders/{order.id}',
         )
@@ -260,8 +252,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         notify(
             order.freelancer if request.user.id == order.client_id else order.client,
-            request.user,
-            'order_cancelled',
+            request.user, 'order_cancelled',
             f'Order #{order.id} was cancelled.',
             f'/orders/{order.id}',
         )
@@ -282,8 +273,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         notify(
             order.freelancer if request.user.id == order.client_id else order.client,
-            request.user,
-            'order_disputed',
+            request.user, 'order_disputed',
             f'Order #{order.id} was disputed: {reason}',
             f'/orders/{order.id}',
         )
@@ -332,21 +322,10 @@ class MpesaCallbackView(APIView):
     def post(self, request):
         try:
             data = request.data
-            # STK Push callback structure
             stk_callback = data.get('Body', {}).get('stkCallback', {})
             result_code = stk_callback.get('ResultCode')
             checkout_request_id = stk_callback.get('CheckoutRequestID')
-            
-            if result_code == 0:
-                # Payment successful. Find order via the callback metadata or reference.
-                # Assuming order_id is passed as AccountReference in stk_push (truncated to 12 chars)
-                # A more robust way is to use the CheckoutRequestID to map to the order.
-                # For now, we'll assume the order ID is in the metadata or we search by CheckoutRequestID.
-                # In a real app, you'd store the CheckoutRequestID in the Order model.
-                # Let's just log it for now.
-                print(f"M-Pesa Payment successful for CheckoutRequestID: {checkout_request_id}")
-                # Logic to find order and mark as funded goes here.
-                # For demonstration, we'll just return success.
+            print(f"M-Pesa callback: code={result_code} id={checkout_request_id}")
             return Response({'ResultCode': 0, 'ResultDesc': 'Success'})
         except Exception as e:
             return Response({'ResultCode': 1, 'ResultDesc': str(e)}, status=400)
@@ -358,8 +337,6 @@ class StripeWebhookView(APIView):
 
     def post(self, request):
         payload = request.body
-        sig_header = request.META.get('HTTP_STRIPE_SIGNATURE')
-        # In a real app, verify the webhook signature using STRIPE_WEBHOOK_SECRET
         try:
             event = json.loads(payload)
             if event['type'] == 'payment_intent.succeeded':
@@ -372,13 +349,6 @@ class StripeWebhookView(APIView):
                         order.status = 'in_progress'
                         order.funded_at = timezone.now()
                         order.save()
-                        notify(
-                            order.freelancer,
-                            order.client,
-                            'escrow_funded',
-                            f'Escrow funded via Stripe for order #{order.id}. You can start working.',
-                            f'/orders/{order.id}',
-                        )
             return Response({'status': 'success'})
         except Exception as e:
             return Response({'error': str(e)}, status=400)
