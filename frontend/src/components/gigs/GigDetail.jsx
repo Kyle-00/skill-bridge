@@ -27,27 +27,25 @@ const GigDetail = () => {
   }, [id]);
 
   const handleBuyNow = async () => {
-  setBuying(true);
-  setBuyError('');
-  try {
-    const res = await api.post('orders/buy-gig/', { gig_id: gig.id });
-    const orderId = res.data.order.id;
-    navigate(`/orders/${orderId}`);
-  } catch (err) {
-    const data = err.response?.data;
-
-    // If the client already has an active order for this gig,
-    // jump straight to that order instead of showing an error
-    if (data?.order_id) {
-      navigate(`/orders/${data.order_id}`);
-      return;
+    setBuying(true);
+    setBuyError('');
+    try {
+      const res = await api.post('orders/buy-gig/', { gig_id: gig.id });
+      const orderId = res.data.order.id;
+      // Jump to the order and immediately open the Fund Escrow modal.
+      navigate(`/orders/${orderId}?fund=1`);
+    } catch (err) {
+      const data = err.response?.data;
+      if (data?.order_id) {
+        // Already have an active order — go straight to it
+        navigate(`/orders/${data.order_id}?fund=1`);
+        return;
+      }
+      setBuyError(data?.error || 'Could not create order.');
+    } finally {
+      setBuying(false);
     }
-
-    setBuyError(data?.error || 'Could not create order.');
-  } finally {
-    setBuying(false);
-  }
-};
+  };
 
   if (loading) {
     return (
@@ -134,7 +132,7 @@ const GigDetail = () => {
                 buying ? 'bg-gray-400 cursor-not-allowed' : 'bg-gold-600 hover:bg-gold-700'
               }`}
             >
-              {buying ? 'Starting order...' : `Start an Order — $${gig.price}`} 
+              {buying ? 'Starting order...' : `Start an Order — $${gig.price}`}
             </button>
           )}
         </div>
