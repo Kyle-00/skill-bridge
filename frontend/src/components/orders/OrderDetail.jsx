@@ -3,11 +3,36 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import {
   FaArrowLeft, FaComments, FaPlus, FaClock, FaDownload, FaExternalLinkAlt,
+  FaExclamationTriangle, FaFileAlt, FaImage, FaFilePdf,
 } from 'react-icons/fa';
 import api from '../../api/axiosConfig';
 import FundEscrowModal from './FundEscrowModal';
 import DisputePanel from './DisputePanel';
 
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+const fileExtension = (url = '') => {
+  const clean = url.split('?')[0].split('#')[0];
+  const parts = clean.split('.');
+  if (parts.length < 2) return '';
+  return parts.pop().toLowerCase();
+};
+
+const isImageExt = (ext) =>
+  ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext);
+
+const isPdfExt = (ext) => ext === 'pdf';
+
+const fileIconFor = (ext) => {
+  if (isImageExt(ext)) return FaImage;
+  if (isPdfExt(ext)) return FaFilePdf;
+  return FaFileAlt;
+};
+
+/* ------------------------------------------------------------------ */
+/*  Component                                                          */
+/* ------------------------------------------------------------------ */
 const OrderDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -27,11 +52,14 @@ const OrderDetail = () => {
     deliverable_message: '',
     deliverable_file: null,
   });
+  const [deliverableError, setDeliverableError] = useState('');
+
   const [review, setReview] = useState({
     quality: 5, communication: 5, timeliness: 5, professionalism: 5, comment: '',
   });
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
 
+  // Initial load
   useEffect(() => {
     let cancelled = false;
 
@@ -60,7 +88,7 @@ const OrderDetail = () => {
     return () => { cancelled = true; };
   }, [id]);
 
-  // Auto-open Fund Escrow modal when ?fund=1 is present
+  // Auto-open Fund Escrow modal when ?fund=1
   useEffect(() => {
     if (searchParams.get('fund') === '1' && order && !order.escrow_funded) {
       const timer = setTimeout(() => setShowFundModal(true), 0);
@@ -68,7 +96,7 @@ const OrderDetail = () => {
     }
   }, [searchParams, order]);
 
-  // Poll for status changes while the order is delivered and awaiting review
+  // Poll for changes while the order is in flux
   useEffect(() => {
     if (!order) return;
     if (order.status === 'completed' || order.status === 'cancelled') return;
@@ -119,7 +147,21 @@ const OrderDetail = () => {
   };
 
   const handleSubmitDeliverable = () => {
-    if (deliverable.deliverable_file) {
+    // Require at least one of: file OR URL.
+    // A message alone is not sufficient.
+    const hasFile = !!deliverable.deliverable_file;
+    const hasUrl = deliverable.deliverable_url.trim().length > 0;
+
+    if (!hasFile && !hasUrl) {
+      setDeliverableError(
+        'Please attach a file or paste a URL so the client can review your work.'
+      );
+      return;
+    }
+
+    setDeliverableError('');
+
+    if (hasFile) {
       const formData = new FormData();
       formData.append('deliverable_file', deliverable.deliverable_file);
       formData.append('deliverable_message', deliverable.deliverable_message || '');
@@ -198,9 +240,21 @@ const OrderDetail = () => {
 
   const isClient = user?.id === order.client?.id;
   const isFreelancer = user?.id === order.freelancer?.id;
-  const hasDeliverable = Boolean(
-    order.deliverable_url || order.deliverable_message || order.deliverable_file
-  );
+
+  const hasMessage = Boolean(order.deliverable_message);
+  const hasUrl = Boolean(order.deliverable_url);
+  const hasFile = Boolean(order.deliverable_file);
+  const hasDeliverable = hasMessage || hasUrl || hasFile;
+
+  const deliverableExt = hasFile
+    ? fileExtension(order.deliverable_file)
+    : hasUrl
+    ? fileExtension(order.deliverable_url)
+    : '';
+  const showImagePreview = (hasFile || hasUrl) && isImageExt(deliverableExt);
+  const showPdfPreview = (hasFile || hasUrl) && isPdfExt(deliverableExt);
+
+  const previewUrl = order.deliverable_file || order.deliverable_url || '';
 
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-6">
@@ -270,46 +324,94 @@ const OrderDetail = () => {
         </div>
       </div>
 
-      {/* Deliverable — NEW: shows what the freelancer submitted */}
+      {/* Deliverable */}
       {hasDeliverable && (
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 mb-6 border-l-4 border-gold-500">
           <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
             <FaDownload className="text-gold-600" /> Work Delivered
           </h2>
 
-          {order.deliverable_message && (
-            <p className="text-sm text-gray-700 dark:text-gray-300 mb-3 whitespace-pre-line">
+          {hasMessage && (
+            <p className="text-sm text-gray-700 dark:text-gray-300 mb-4 whitespace-pre-line">
               {order.deliverable_message}
             </p>
           )}
 
-          <div className="flex flex-wrap gap-3">
-            {order.deliverable_file && (
-              <a
-                href={order.deliverable_file}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 bg-gold-600 text-white px-4 py-2 rounded-lg hover:bg-gold-700 text-sm font-semibold"
-              >
-                <FaDownload size={12} /> Download File
-              </a>
-            )}
-            {order.deliverable_url && (
-              <a
-                href={order.deliverable_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 border border-gold-600 text-gold-600 px-4 py-2 rounded-lg hover:bg-gold-50 dark:hover:bg-gold-900/30 text-sm font-semibold"
-              >
-                <FaExternalLinkAlt size={12} /> Open Link
-              </a>
-            )}
-          </div>
+          {/* If there is something to open */}
+          {(hasFile || hasUrl) ? (
+            <>
+              <div className="flex flex-wrap gap-3 mb-4">
+                {hasFile && (
+                  <a
+                    href={order.deliverable_file}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 bg-gold-600 text-white px-4 py-2 rounded-lg hover:bg-gold-700 text-sm font-semibold"
+                  >
+                    <FaDownload size={12} /> Download File
+                  </a>
+                )}
+                {hasUrl && (
+                  <a
+                    href={order.deliverable_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 border border-gold-600 text-gold-600 px-4 py-2 rounded-lg hover:bg-gold-50 dark:hover:bg-gold-900/30 text-sm font-semibold"
+                  >
+                    <FaExternalLinkAlt size={12} /> Open Link
+                  </a>
+                )}
+                {previewUrl && !showImagePreview && !showPdfPreview && (
+                  <span className="inline-flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                    {(() => {
+                      const I = fileIconFor(deliverableExt);
+                      return <I />;
+                    })()}
+                    {deliverableExt ? `.${deliverableExt}` : 'Attachment'}
+                  </span>
+                )}
+              </div>
+
+              {/* Inline image preview */}
+              {showImagePreview && previewUrl && (
+                <div className="mt-2 mb-4 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+                  <img
+                    src={previewUrl}
+                    alt="Delivered work"
+                    className="max-h-96 mx-auto object-contain"
+                  />
+                </div>
+              )}
+
+              {/* Inline PDF preview */}
+              {showPdfPreview && previewUrl && (
+                <div className="mt-2 mb-4 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
+                  <iframe
+                    src={previewUrl}
+                    title="Delivered PDF"
+                    className="w-full h-96 bg-white"
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            /* Nothing clickable was provided */
+            <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg flex items-start gap-2">
+              <FaExclamationTriangle className="text-yellow-600 mt-0.5 shrink-0" />
+              <div className="text-sm text-yellow-800 dark:text-yellow-300">
+                <p className="font-semibold">No file or link provided.</p>
+                <p className="text-xs mt-1">
+                  The freelancer submitted a message only. Ask them in chat to send
+                  the actual work (a file or a URL) before you approve.
+                </p>
+              </div>
+            </div>
+          )}
 
           {isClient && order.status === 'delivered' && (
-            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+            <div className="mt-5 pt-4 border-t border-gray-200 dark:border-gray-700">
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                Review the work above, then approve it to release escrow funds to the freelancer.
+                Review the work above, then approve to release escrow funds to the freelancer.
               </p>
               <button
                 onClick={handleApprove}
@@ -338,34 +440,56 @@ const OrderDetail = () => {
 
           {isFreelancer && order.status === 'in_progress' && (
             <div className="w-full space-y-3">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Provide a <strong>file</strong> or a <strong>URL</strong> so the
+                client can review your work. A message alone is not enough.
+              </p>
+
               <input
                 type="text"
-                placeholder="Deliverable URL (optional if uploading a file)"
+                placeholder="Deliverable URL (e.g. https://drive.google.com/... or https://my-site.com/preview)"
                 value={deliverable.deliverable_url}
-                onChange={(e) =>
-                  setDeliverable((d) => ({ ...d, deliverable_url: e.target.value }))
-                }
+                onChange={(e) => {
+                  setDeliverable((d) => ({
+                    ...d,
+                    deliverable_url: e.target.value,
+                  }));
+                  if (deliverableError) setDeliverableError('');
+                }}
                 className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
               />
+
               <input
                 type="file"
-                onChange={(e) =>
+                onChange={(e) => {
                   setDeliverable((d) => ({
-                    ...d, deliverable_file: e.target.files[0] || null,
-                  }))
-                }
+                    ...d,
+                    deliverable_file: e.target.files[0] || null,
+                  }));
+                  if (deliverableError) setDeliverableError('');
+                }}
                 className="w-full text-sm"
               />
+
               <textarea
-                placeholder="Message about the delivery"
+                placeholder="Optional message about the delivery"
                 value={deliverable.deliverable_message}
                 onChange={(e) =>
                   setDeliverable((d) => ({
-                    ...d, deliverable_message: e.target.value,
+                    ...d,
+                    deliverable_message: e.target.value,
                   }))
                 }
+                rows="3"
                 className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
               />
+
+              {deliverableError && (
+                <div className="p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm">
+                  {deliverableError}
+                </div>
+              )}
+
               <button
                 onClick={handleSubmitDeliverable}
                 disabled={actionLoading}
