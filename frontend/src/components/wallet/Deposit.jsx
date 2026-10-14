@@ -27,9 +27,10 @@ const CARD_ELEMENT_OPTIONS = {
 
 const PRESET_AMOUNTS = [10, 25, 50, 100, 250];
 
-const MAX_POLL_ATTEMPTS = 20;   // 20 × 3s = 60 seconds
+// 15 × 3s = 45 seconds for both Card and M-Pesa
+const MAX_POLL_ATTEMPTS = 15;
 const POLL_INTERVAL_MS = 3000;
-const POLL_DURATION_SECONDS = 60;
+const POLL_DURATION_SECONDS = 45;
 
 const Deposit = () => (
   <Elements stripe={stripePromise}>
@@ -50,7 +51,6 @@ const DepositInner = () => {
   const [error, setError] = useState('');
   const [txId, setTxId] = useState(null);
   const [kesRate, setKesRate] = useState(130);
-  // FIX 1: Removed pollCount state entirely.
   const [secondsLeft, setSecondsLeft] = useState(POLL_DURATION_SECONDS);
 
   const pollRef = useRef(null);
@@ -77,7 +77,7 @@ const DepositInner = () => {
       .catch(() => {});
   }, [step]);
 
-  // Polling loop. Only starts the intervals; no synchronous setState here.
+  // Polling loop
   useEffect(() => {
     if (step !== 'pending') {
       if (pollRef.current) clearInterval(pollRef.current);
@@ -138,7 +138,7 @@ const DepositInner = () => {
         pollRef.current = null;
         tickRef.current = null;
         setError(
-          'Timed out after 60 seconds. Check your phone for an M-Pesa message, then refresh the wallet page.'
+          'Timed out after 45 seconds. Check your phone for an M-Pesa message, then refresh the wallet page.'
         );
         setStep('failed');
       }
@@ -184,8 +184,6 @@ const DepositInner = () => {
     return digits;
   };
 
-  // FIX 2: Reset countdown and step together in the action handler,
-  // not inside the effect. This satisfies the react-hooks rule.
   const enterPendingState = (referenceId) => {
     setTxId(referenceId);
     setSecondsLeft(POLL_DURATION_SECONDS);
