@@ -1,5 +1,6 @@
 import { useSelector, useDispatch } from 'react-redux';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
 import {
   FaHome, FaUser, FaBriefcase, FaComments, FaCog, FaSignOutAlt,
   FaWallet, FaUsers, FaUserShield, FaPlus, FaSearch, FaList,
@@ -13,10 +14,35 @@ const Sidebar = () => {
   const navigate = useNavigate();
   const isOpen = useSelector((s) => s.sidebar.isOpen);
   const user = useSelector((s) => s.auth.user);
+  const sidebarRef = useRef(null);
 
   const role = user?.role || 'both';
   const isAdmin = user?.is_superuser;
   const isPro = user?.is_pro || user?.plan === 'pro';
+
+  // Close sidebar when clicking outside of it
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (event) => {
+      if (sidebarRef.current && !sidebarRef.current.contains(event.target)) {
+        dispatch(closeSidebar());
+      }
+    };
+
+    // Delay attachment slightly so the same click that opened it
+    // doesn't immediately close it
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [isOpen, dispatch]);
 
   const handleLogout = () => {
     dispatch(logout());
@@ -36,6 +62,7 @@ const Sidebar = () => {
 
   return (
     <aside
+      ref={sidebarRef}
       className={`fixed top-16 left-0 h-[calc(100vh-4rem)] bg-white dark:bg-black border-r border-gold-200 dark:border-gold-700 transition-transform duration-300 w-64 z-40 overflow-y-auto ${
         isOpen ? 'translate-x-0' : '-translate-x-full'
       }`}
@@ -65,6 +92,7 @@ const Sidebar = () => {
         {!isPro && !isAdmin && (
           <NavLink
             to="/pricing/pro/checkout"
+            onClick={() => dispatch(closeSidebar())}
             className="block p-3 rounded-xl bg-gradient-to-br from-gold-500 to-gold-700 text-white shadow-lg hover:shadow-xl transition mb-3"
           >
             <div className="flex items-center gap-2 mb-1">
@@ -80,19 +108,19 @@ const Sidebar = () => {
         {isAdmin && (
           <>
             <div className={sectionLabel}>Admin Dashboard</div>
-            <NavLink to="/admin" end className={linkClass}>
+            <NavLink to="/admin" end className={linkClass} onClick={() => dispatch(closeSidebar())}>
               <FaUserShield /> Overview
             </NavLink>
-            <NavLink to="/admin/users" className={linkClass}>
+            <NavLink to="/admin/users" className={linkClass} onClick={() => dispatch(closeSidebar())}>
               <FaUsers /> Manage Users
             </NavLink>
-            <NavLink to="/admin/gigs" className={linkClass}>
+            <NavLink to="/admin/gigs" className={linkClass} onClick={() => dispatch(closeSidebar())}>
               <FaBriefcase /> Manage Gigs
             </NavLink>
-            <NavLink to="/admin/projects" className={linkClass}>
+            <NavLink to="/admin/projects" className={linkClass} onClick={() => dispatch(closeSidebar())}>
               <FaProjectDiagram /> Manage Projects
             </NavLink>
-            <NavLink to="/admin/orders" className={linkClass}>
+            <NavLink to="/admin/orders" className={linkClass} onClick={() => dispatch(closeSidebar())}>
               <FaShoppingCart /> View Orders
             </NavLink>
             <a
@@ -108,35 +136,35 @@ const Sidebar = () => {
         )}
 
         <div className={sectionLabel}>Workspace</div>
-        <NavLink to="/dashboard" className={linkClass}>
+        <NavLink to="/dashboard" className={linkClass} onClick={() => dispatch(closeSidebar())}>
           <FaHome /> Dashboard
         </NavLink>
-        <NavLink to="/orders" className={linkClass}>
+        <NavLink to="/orders" className={linkClass} onClick={() => dispatch(closeSidebar())}>
           <FaShoppingCart /> Orders
         </NavLink>
-        <NavLink to="/wallet" className={linkClass}>
+        <NavLink to="/wallet" className={linkClass} onClick={() => dispatch(closeSidebar())}>
           <FaWallet /> Wallet
         </NavLink>
-        <NavLink to="/messages" className={linkClass}>
+        <NavLink to="/messages" className={linkClass} onClick={() => dispatch(closeSidebar())}>
           <FaComments /> Messages
         </NavLink>
-        <NavLink to="/profile" className={linkClass}>
+        <NavLink to="/profile" className={linkClass} onClick={() => dispatch(closeSidebar())}>
           <FaUser /> Profile
         </NavLink>
-        <NavLink to="/settings" className={linkClass}>
+        <NavLink to="/settings" className={linkClass} onClick={() => dispatch(closeSidebar())}>
           <FaCog /> Settings
         </NavLink>
 
         {(role === 'freelancer' || role === 'both') && (
           <>
             <div className={sectionLabel}>Freelancer</div>
-            <NavLink to="/projects" end className={linkClass}>
+            <NavLink to="/projects" end className={linkClass} onClick={() => dispatch(closeSidebar())}>
               <FaSearch /> Browse Projects
             </NavLink>
-            <NavLink to="/gigs/mine" className={linkClass}>
+            <NavLink to="/gigs/mine" className={linkClass} onClick={() => dispatch(closeSidebar())}>
               <FaBriefcase /> My Gigs
             </NavLink>
-            <NavLink to="/create-gig" className={linkClass}>
+            <NavLink to="/create-gig" className={linkClass} onClick={() => dispatch(closeSidebar())}>
               <FaPlus /> Create Gig
             </NavLink>
           </>
@@ -145,13 +173,13 @@ const Sidebar = () => {
         {(role === 'client' || role === 'both') && (
           <>
             <div className={sectionLabel}>Client</div>
-            <NavLink to="/gigs" end className={linkClass}>
+            <NavLink to="/gigs" end className={linkClass} onClick={() => dispatch(closeSidebar())}>
               <FaSearch /> Browse Gigs
             </NavLink>
-            <NavLink to="/my-projects" className={linkClass}>
+            <NavLink to="/my-projects" className={linkClass} onClick={() => dispatch(closeSidebar())}>
               <FaList /> My Projects
             </NavLink>
-            <NavLink to="/projects/new" className={linkClass}>
+            <NavLink to="/projects/new" className={linkClass} onClick={() => dispatch(closeSidebar())}>
               <FaPlus /> Post Project
             </NavLink>
           </>
