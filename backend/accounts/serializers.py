@@ -1,16 +1,25 @@
 from rest_framework import serializers
-from .models import User, FreelancerProfile, ClientProfile
+from .models import User, FreelancerProfile, ClientProfile, SubscriptionPayment
 
 
 class UserSerializer(serializers.ModelSerializer):
+    is_pro = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name', 'role',
+            'plan', 'plan_expires_at', 'is_pro',
             'phone_number', 'is_verified', 'trust_score',
             'is_superuser', 'is_staff',
         ]
-        read_only_fields = ['is_superuser', 'is_staff', 'trust_score', 'is_verified']
+        read_only_fields = [
+            'is_superuser', 'is_staff', 'trust_score', 'is_verified',
+            'plan', 'plan_expires_at',
+        ]
+
+    def get_is_pro(self, obj):
+        return obj.has_active_pro_plan()
 
     def update(self, instance, validated_data):
         role = validated_data.get('role')
@@ -18,6 +27,13 @@ class UserSerializer(serializers.ModelSerializer):
         if role:
             create_role_resources(user, role)
         return user
+
+
+class SubscriptionPaymentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SubscriptionPayment
+        fields = '__all__'
+        read_only_fields = ['user', 'status', 'reference', 'completed_at']
 
 
 def create_role_resources(user, role):
