@@ -1,7 +1,9 @@
 import os
+from decimal import Decimal
 import requests
-from django.shortcuts import get_object_or_404  # <-- FIXED: Added import
+import stripe
 from django.conf import settings
+from django.shortcuts import get_object_or_404
 from django.contrib.auth import authenticate
 from rest_framework import status, permissions, serializers
 from rest_framework.response import Response
@@ -10,15 +12,18 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import User, FreelancerProfile, ClientProfile
+from .models import User, FreelancerProfile, ClientProfile, SubscriptionPayment
 from .serializers import (
     UserSerializer,
     RegisterSerializer,
     GoogleVerifySerializer,
     FreelancerProfileSerializer,
     ClientProfileSerializer,
-    create_role_resources,  # <-- FIXED: Added import
+    create_role_resources,
 )
+
+stripe.api_key = settings.STRIPE_SECRET_KEY
+
 
 class EmailOrUsernameTokenObtainPairSerializer(TokenObtainPairSerializer):
     username_field = 'email'
@@ -41,8 +46,10 @@ class EmailOrUsernameTokenObtainPairSerializer(TokenObtainPairSerializer):
             'access': str(refresh.access_token),
         }
 
+
 class EmailOrUsernameTokenObtainPairView(TokenObtainPairView):
     serializer_class = EmailOrUsernameTokenObtainPairSerializer
+
 
 class RegisterView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -62,6 +69,7 @@ class RegisterView(APIView):
                 status=status.HTTP_201_CREATED,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 class GoogleVerifyView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -149,6 +157,7 @@ class GoogleVerifyView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+
 class UserProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -161,6 +170,7 @@ class UserProfileView(APIView):
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 class FreelancerProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -179,6 +189,7 @@ class FreelancerProfileView(APIView):
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
 class ClientProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -196,6 +207,7 @@ class ClientProfileView(APIView):
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
 class DeleteAccountView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -209,12 +221,14 @@ class DeleteAccountView(APIView):
         user.delete()
         return Response({'message': 'Account deleted.'})
 
+
 class AdminUserListView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def get(self, request):
         users = User.objects.all().order_by('-date_joined')
         return Response(UserSerializer(users, many=True).data)
+
 
 class AdminUserDetailView(APIView):
     permission_classes = [permissions.IsAdminUser]
@@ -231,14 +245,16 @@ class AdminUserDetailView(APIView):
             return Response(serializer.data)
         return Response(serializer.errors, status=400)
 
+
 class FreelancerListView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
         freelancers = User.objects.filter(
             role__in=['freelancer', 'both'], is_active=True
-        ).order_by('-date_joined')
+        ).order_by('-date_join」ed' if False else '-date_joined')
         return Response(UserSerializer(freelancers, many=True).data)
+
 
 class ChooseRoleView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -258,3 +274,144 @@ class ChooseRoleView(APIView):
         create_role_resources(user, role)
 
         return Response(UserSerializer(user).data)
+
+
+class SubscribeView(APIView):
+    """
+    Subscribe to the Pro plan via M-Pesa (STK push) or Stripe (card).
+
+    Request body:
+        method: 'mpesa' | 'stripe'
+        phone_number: required only if method == 'mpesa'
+
+    Response:
+        M-Pesa: {status: 'pending', checkout_request_id, amount_kes, exchange_rate}
+        Stripe: {client_secret, intent_id, amount_usd}
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    PRO_PRICE_USD = Decimal('9.99')
+
+    def post(self, request):
+        method = request.data.get('method', 'stripe')
+        user = request.user
+
+        if user.has_active_pro_plan():
+            return Response(
+                {'error': 'You already have an active Pro plan.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if method == 'mpesa':
+            return self._handle_mpesa(request, user)
+        elif method == 'stripe':
+            return self._handle_stripe(request, user)
+
+        return Response(
+            {'error': 'Payment method must be "mpesa" or "stripe".'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    def _handle_mpesa(self, request, user):
+        phone = request.data.get('phone_number', '')
+        digits = ''.join(filter(str.isdigit, str(phone)))
+        if digits.startswith('0'):
+            digits = '254' + digits[1:]
+        elif digits.startswith('7') or digits.startswith('1'):
+            digits = '254' + digits
+        if not digits.startswith('254') or len(digits) != 12:
+            return Response(
+                {'error': 'Invalid Kenyan phone number. Use 2547XXXXXXXX.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            from wallet.services.exchange import get_usd_to_kes_rate
+            rate = get_usd_to_kes_rate()
+        except Exception:
+            rate = Decimal('130')
+
+        amount_kes = int(self.PRO_PRICE_USD * rate)
+
+        payment = SubscriptionPayment.objects.create(
+            user=user,
+            plan='pro',
+            amount_usd=self.PRO_PRICE_USD,
+            amount_kes=amount_kes,
+            method='mpesa',
+            status='pending',
+        )
+
+        try:
+            from orders.services.mpesa import stk_push
+            result = stk_push(digits, amount_kes, f'SUB{user.id}')
+        except Exception as e:
+            payment.status = 'failed'
+            payment.save()
+            return Response(
+                {'error': f'STK push failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        if result.get('ResponseCode') == '0':
+            payment.reference = result.get('CheckoutRequestID', '')
+            payment.save()
+            return Response({
+                'status': 'pending',
+                'message': 'STK push sent. Enter your M-Pesa PIN to complete the upgrade.',
+                'checkout_request_id': result.get('CheckoutRequestID'),
+                'amount_usd': float(self.PRO_PRICE_USD),
+                'amount_kes': amount_kes,
+                'exchange_rate': float(rate),
+            })
+
+        payment.status = 'failed'
+        payment.save()
+        return Response(
+            {'error': result.get('errorMessage') or result.get('ResponseDescription', 'STK push failed')},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    def _handle_stripe(self, request, user):
+        try:
+            intent = stripe.PaymentIntent.create(
+                amount=int(self.PRO_PRICE_USD * 100),
+                currency='usd',
+                metadata={
+                    'type': 'subscription',
+                    'user_id': user.id,
+                    'plan': 'pro',
+                },
+                payment_method_types=['card'],
+                receipt_email=user.email,
+            )
+            SubscriptionPayment.objects.create(
+                user=user,
+                plan='pro',
+                amount_usd=self.PRO_PRICE_USD,
+                method='stripe',
+                status='pending',
+                reference=intent.id,
+            )
+            return Response({
+                'client_secret': intent.client_secret,
+                'intent_id': intent.id,
+                'amount_usd': float(self.PRO_PRICE_USD),
+            })
+        except stripe.error.StripeError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+class SubscriptionStatusView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        return Response({
+            'plan': user.plan,
+            'is_pro': user.has_active_pro_plan(),
+            'plan_expires_at': user.plan_expires_at,
+        })
