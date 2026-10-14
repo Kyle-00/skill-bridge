@@ -1,4 +1,5 @@
 from decimal import Decimal
+import traceback
 from django.db import models
 from django.db import transaction as db_transaction
 from django.shortcuts import get_object_or_404
@@ -97,7 +98,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
         return Response(ProposalSerializer(proposals, many=True).data)
 
     # -----------------------------------------------------------------------
-    # ACCEPT PROPOSAL — auto-funds escrow from the client's wallet
+    # ACCEPT PROPOSAL — auto-funds escrow from wallet
     # -----------------------------------------------------------------------
     @action(detail=True, methods=['post'], url_path='accept-proposal')
     def accept_proposal(self, request, pk=None):
@@ -119,51 +120,60 @@ class ProjectViewSet(viewsets.ModelViewSet):
         fee_rate = get_platform_fee_rate(proposal.freelancer)
         fee = (total * fee_rate).quantize(Decimal('0.01'))
 
-        # Try auto-funding from the client's wallet
         from wallet.models import Wallet, Transaction as WalletTransaction
 
         escrow_funded = False
         order_status = 'pending'
         funded_at = None
+        client_wallet_balance = Decimal('0')
 
-        with db_transaction.atomic():
-            # Lock the client's wallet for the balance check
-            client_wallet, _ = Wallet.objects.get_or_create(user=request.user)
-            client_wallet = Wallet.objects.select_for_update().get(
-                pk=client_wallet.pk
-            )
-
-            if client_wallet.balance >= total:
-                client_wallet.balance -= total
-                client_wallet.save()
-                WalletTransaction.objects.create(
-                    wallet=client_wallet,
-                    amount=-total,
-                    transaction_type='escrow_fund',
-                    description=f'Auto-funded escrow for "{project.title}"',
+        try:
+            with db_transaction.atomic():
+                client_wallet, _ = Wallet.objects.get_or_create(user=request.user)
+                client_wallet = Wallet.objects.select_for_update().get(
+                    pk=client_wallet.pk
                 )
-                escrow_funded = True
-                order_status = 'in_progress'
-                funded_at = timezone.now()
 
-            proposal.status = 'accepted'
-            proposal.save()
-            project.proposals.exclude(id=proposal.id).update(status='rejected')
-            project.status = 'in_progress'
-            project.save()
+                if client_wallet.balance >= total:
+                    client_wallet.balance -= total
+                    client_wallet.save()
+                    # Valid transaction_type + correct reference field
+                    WalletTransaction.objects.create(
+                        wallet=client_wallet,
+                        amount=-total,
+                        transaction_type='escrow',
+                        status='success',
+                        description=f'Auto-funded escrow for "{project.title}"',
+                        reference=f'PROJECT-{project.id}',
+                    )
+                    escrow_funded = True
+                    order_status = 'in_progress'
+                    funded_at = timezone.now()
 
-            order = Order.objects.create(
-                order_type='project',
-                project=project,
-                client=request.user,
-                freelancer=proposal.freelancer,
-                total_amount=total,
-                platform_fee=fee,
-                status=order_status,
-                escrow_funded=escrow_funded,
-                funded_at=funded_at,
-            )
-            room = get_or_create_room(request.user, proposal.freelancer)
+                client_wallet_balance = client_wallet.balance
+
+                proposal.status = 'accepted'
+                proposal.save()
+                project.proposals.exclude(id=proposal.id).update(status='rejected')
+                project.status = 'in_progress'
+                project.save()
+
+                order = Order.objects.create(
+                    order_type='project',
+                    project=project,
+                    client=request.user,
+                    freelancer=proposal.freelancer,
+                    total_amount=total,
+                    platform_fee=fee,
+                    status=order_status,
+                    escrow_funded=escrow_funded,
+                    funded_at=funded_at,
+                )
+                room = get_or_create_room(request.user, proposal.freelancer)
+
+        except Exception as e:
+            traceback.print_exc()
+            return Response({'error': str(e)}, status=500)
 
         client_name = request.user.get_full_name() or request.user.username
         safe_notify(
@@ -188,7 +198,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
             'escrow_funded': escrow_funded,
             'needs_funding': not escrow_funded,
             'total': str(total),
-            'wallet_balance': str(client_wallet.balance),
+            'wallet_balance': str(client_wallet_balance),
         })
 
     @action(detail=True, methods=['get'], url_path='milestones')
