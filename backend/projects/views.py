@@ -63,6 +63,40 @@ class ProjectViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(client=self.request.user)
 
+    # -----------------------------------------------------------------------
+    # DELETE — only the owner can delete their project
+    # -----------------------------------------------------------------------
+    def destroy(self, request, *args, **kwargs):
+        project = self.get_object()
+
+        if project.client_id != request.user.id:
+            return Response(
+                {'error': 'You can only delete your own projects.'},
+                status=403,
+            )
+
+        # Prevent deletion of projects that have active orders
+        active_orders = Order.objects.filter(
+            project=project,
+            status__in=['pending', 'in_progress', 'delivered', 'disputed'],
+        ).exists()
+        if active_orders:
+            return Response(
+                {
+                    'error': (
+                        'This project has active orders and cannot be deleted. '
+                        'Cancel or complete those orders first.'
+                    )
+                },
+                status=400,
+            )
+
+        project.delete()
+        return Response({'message': 'Project deleted successfully.'}, status=204)
+
+    # -----------------------------------------------------------------------
+    # Proposals list (owner only)
+    # -----------------------------------------------------------------------
     @action(detail=True, methods=['get'], url_path='proposals-list')
     def proposals_list(self, request, pk=None):
         project = self.get_object()
@@ -71,11 +105,16 @@ class ProjectViewSet(viewsets.ModelViewSet):
         proposals = project.proposals.all().order_by('-created_at')
         return Response(ProposalSerializer(proposals, many=True).data)
 
+    # -----------------------------------------------------------------------
+    # Accept proposal — create order + chat room
+    # -----------------------------------------------------------------------
     @action(detail=True, methods=['post'], url_path='accept-proposal')
     def accept_proposal(self, request, pk=None):
         project = self.get_object()
         if project.client_id != request.user.id:
-            return Response({'error': 'Only the project owner can accept proposals'}, status=403)
+            return Response(
+                {'error': 'Only the project owner can accept proposals'}, status=403
+            )
         if project.status != 'open':
             return Response({'error': 'Project is no longer open'}, status=400)
 
@@ -120,6 +159,9 @@ class ProjectViewSet(viewsets.ModelViewSet):
             'chat_room_id': room.id,
         })
 
+    # -----------------------------------------------------------------------
+    # Milestones
+    # -----------------------------------------------------------------------
     @action(detail=True, methods=['get'], url_path='milestones')
     def milestones(self, request, pk=None):
         project = self.get_object()
@@ -130,7 +172,9 @@ class ProjectViewSet(viewsets.ModelViewSet):
     def add_milestone(self, request, pk=None):
         project = self.get_object()
         if project.client_id != request.user.id:
-            return Response({'error': 'Only the project owner can add milestones'}, status=403)
+            return Response(
+                {'error': 'Only the project owner can add milestones'}, status=403
+            )
         serializer = MilestoneSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save(project=project)
@@ -153,7 +197,9 @@ class ProposalViewSet(viewsets.ModelViewSet):
 
         # Free plan users: 5 proposals per calendar month
         if not user.has_active_pro_plan():
-            month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            month_start = timezone.now().replace(
+                day=1, hour=0, minute=0, second=0, microsecond=0
+            )
             count = Proposal.objects.filter(
                 freelancer=user,
                 created_at__gte=month_start,
