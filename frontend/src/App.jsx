@@ -66,7 +66,6 @@ import Notifications from './components/pages/Notifications';
 function App() {
   const theme = useSelector((s) => s.theme.mode);
 
-  // Sync Redux theme state with the DOM <html> class
   useEffect(() => {
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
@@ -79,7 +78,6 @@ function App() {
     <BrowserRouter>
       <ScrollToTop />
       <BackToTop />
-      {/* The 'dark' class is now globally managed by the useEffect above */}
       <div className="min-h-screen bg-white dark:bg-black text-gray-900 dark:text-white flex flex-col">
         <Navbar />
         <Sidebar />
@@ -97,7 +95,7 @@ function App() {
             <Route path="/freelancers" element={<HireTalent />} />
             <Route path="/why-skillbridge" element={<WhySkillBridge />} />
             <Route path="/pricing" element={<Pricing />} />
-            <Route path="/plan-checkout" element={<PlanCheckout />} />
+            <Route path="/pricing/:plan/checkout" element={<PlanCheckout />} />
             <Route path="/resources" element={<Resources />} />
             <Route path="/resources/:id" element={<ResourceDetail />} />
             <Route path="/about" element={<About />} />

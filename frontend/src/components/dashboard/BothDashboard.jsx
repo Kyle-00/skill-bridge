@@ -47,7 +47,11 @@ const BothDashboard = () => {
         </button>
       </div>
 
-      {tab === 'freelancer' ? <FreelancerDashboard /> : <ClientDashboard />}
+      {tab === 'freelancer' ? (
+        <FreelancerDashboard hideHeader />
+      ) : (
+        <ClientDashboard hideHeader />
+      )}
     </div>
   );
 };
