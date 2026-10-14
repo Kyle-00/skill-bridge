@@ -1,5 +1,6 @@
 from decimal import Decimal
 import json
+import traceback
 from django.core.cache import cache
 from django.db import models
 from django.db import transaction as db_transaction
@@ -45,7 +46,6 @@ def get_or_create_room(user_a, user_b):
 
 
 def safe_notify(recipient, actor, verb, message, target=''):
-    """Never let a notification failure break the main request."""
     try:
         notify(recipient, actor, verb, message, target)
     except Exception as e:
@@ -185,12 +185,14 @@ class OrderViewSet(viewsets.ModelViewSet):
                 with db_transaction.atomic():
                     wallet.balance -= amount
                     wallet.save()
+                    # Valid transaction_type from the choices: 'escrow'
                     WalletTransaction.objects.create(
                         wallet=wallet,
                         amount=-amount,
-                        transaction_type='escrow_fund',
+                        transaction_type='escrow',
+                        status='success',
                         description=f'Funded escrow for order #{order.id}',
-                        order_id=order.id,
+                        reference=f'ORDER-{order.id}',
                     )
                     order.escrow_funded = True
                     order.status = 'in_progress'
@@ -211,7 +213,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                 return Response({'message': 'Escrow funded successfully'})
 
         except Exception as e:
-            import traceback
             traceback.print_exc()
             return Response({'error': str(e)}, status=500)
 
@@ -225,21 +226,25 @@ class OrderViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Only the client can mark as funded'}, status=403)
         if order.escrow_funded:
             return Response({'error': 'Already funded'}, status=400)
-        with db_transaction.atomic():
-            order.escrow_funded = True
-            order.status = 'in_progress'
-            order.funded_at = timezone.now()
-            order.save()
-            Transaction.objects.filter(order=order, status='pending').update(
-                status='success'
-            )
+        try:
+            with db_transaction.atomic():
+                order.escrow_funded = True
+                order.status = 'in_progress'
+                order.funded_at = timezone.now()
+                order.save()
+                Transaction.objects.filter(order=order, status='pending').update(
+                    status='success'
+                )
 
-        safe_notify(
-            order.freelancer, request.user, 'escrow_funded',
-            f'Escrow funded for order #{order.id}. You can start working.',
-            f'/orders/{order.id}',
-        )
-        return Response({'message': 'Escrow marked as funded'})
+            safe_notify(
+                order.freelancer, request.user, 'escrow_funded',
+                f'Escrow funded for order #{order.id}. You can start working.',
+                f'/orders/{order.id}',
+            )
+            return Response({'message': 'Escrow marked as funded'})
+        except Exception as e:
+            traceback.print_exc()
+            return Response({'error': str(e)}, status=500)
 
     # -----------------------------------------------------------------------
     # SUBMIT WORK
@@ -279,7 +284,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         return Response({'message': 'Work submitted'})
 
     # -----------------------------------------------------------------------
-    # APPROVE WORK
+    # APPROVE WORK — the fix
     # -----------------------------------------------------------------------
     @action(detail=True, methods=['post'], url_path='approve-work')
     def approve_work(self, request, pk=None):
@@ -289,32 +294,57 @@ class OrderViewSet(viewsets.ModelViewSet):
         if order.status != 'delivered':
             return Response({'error': 'Order is not delivered yet'}, status=400)
 
-        freelancer_wallet, _ = Wallet.objects.get_or_create(user=order.freelancer)
-        payout = order.total_amount - order.platform_fee
+        try:
+            with db_transaction.atomic():
+                freelancer_wallet, _ = Wallet.objects.get_or_create(
+                    user=order.freelancer
+                )
+                payout = order.total_amount - order.platform_fee
 
-        with db_transaction.atomic():
-            freelancer_wallet.balance += payout
-            freelancer_wallet.save()
-            WalletTransaction.objects.create(
-                wallet=freelancer_wallet,
-                amount=payout,
-                transaction_type='payout',
-                description=f'Payout for order #{order.id}',
-                order_id=order.id,
+                # Add funds to freelancer's wallet
+                freelancer_wallet.balance += payout
+                freelancer_wallet.save()
+
+                # Correct transaction_type ('escrow' is a valid choice)
+                # and correct reference field (no order_id in the model)
+                WalletTransaction.objects.create(
+                    wallet=freelancer_wallet,
+                    amount=payout,
+                    transaction_type='escrow',
+                    status='success',
+                    description=f'Payment received for order #{order.id}',
+                    reference=f'ORDER-{order.id}',
+                )
+
+                # Mark the order completed
+                order.status = 'completed'
+                order.completed_at = timezone.now()
+                order.save()
+
+                # Mark related order Transactions as successful
+                Transaction.objects.filter(order=order, status='pending').update(
+                    status='success'
+                )
+
+            safe_notify(
+                order.freelancer, request.user, 'work_approved',
+                f'Your work for order #{order.id} was approved. '
+                f'${payout} was added to your wallet.',
+                f'/orders/{order.id}',
             )
-            order.status = 'completed'
-            order.completed_at = timezone.now()
-            order.save()
 
-        safe_notify(
-            order.freelancer, request.user, 'work_approved',
-            f'Your work for order #{order.id} was approved. ${payout} released.',
-            f'/orders/{order.id}',
-        )
-        return Response({'message': 'Work approved and funds released'})
+            return Response({
+                'message': 'Work approved and funds released to freelancer.',
+                'payout': str(payout),
+                'freelancer_wallet_balance': str(freelancer_wallet.balance),
+            })
+
+        except Exception as e:
+            traceback.print_exc()
+            return Response({'error': str(e)}, status=500)
 
     # -----------------------------------------------------------------------
-    # CANCEL — now bulletproof
+    # CANCEL — refund to client
     # -----------------------------------------------------------------------
     @action(detail=True, methods=['post'], url_path='cancel')
     def cancel(self, request, pk=None):
@@ -329,8 +359,6 @@ class OrderViewSet(viewsets.ModelViewSet):
         refund_done = False
         refund_error = None
 
-        # Refund escrow to the client (wrapped so any wallet error
-        # doesn't prevent the cancel itself from succeeding)
         if order.escrow_funded:
             try:
                 client_wallet, _ = Wallet.objects.get_or_create(user=order.client)
@@ -341,20 +369,18 @@ class OrderViewSet(viewsets.ModelViewSet):
                         wallet=client_wallet,
                         amount=order.total_amount,
                         transaction_type='refund',
+                        status='success',
                         description=f'Refund for cancelled order #{order.id}',
-                        order_id=order.id,
+                        reference=f'ORDER-{order.id}',
                     )
                 refund_done = True
             except Exception as e:
-                import traceback
                 traceback.print_exc()
                 refund_error = str(e)
 
-        # Mark order as cancelled
         order.status = 'cancelled'
         order.save()
 
-        # Notify the other party (non-fatal)
         other_party = (
             order.freelancer if request.user.id == order.client_id else order.client
         )
@@ -472,7 +498,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
 
 # ---------------------------------------------------------------------------
-# Other viewsets (unchanged)
+# Other viewsets
 # ---------------------------------------------------------------------------
 class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = TransactionSerializer
