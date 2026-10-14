@@ -2,7 +2,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { toggleSidebar } from '../../store/sidebarSlice';
 import { toggleTheme } from '../../store/themeSlice';
 import { logout } from '../../store/authSlice';
-import { FaBars, FaBell, FaMoon, FaSun, FaSignOutAlt, FaComments } from 'react-icons/fa';
+import { FaBars, FaBell, FaMoon, FaSun, FaSignOutAlt, FaComments, FaCrown } from 'react-icons/fa';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import useNotificationPoll from '../../hooks/useNotificationPoll';
 
@@ -12,9 +12,11 @@ const Navbar = () => {
   const location = useLocation();
 
   const theme = useSelector((s) => s.theme.mode);
+  const user = useSelector((s) => s.auth.user);
   const unread = useSelector((s) => s.notifications?.unread || 0);
   const unreadMessages = useSelector((s) => s.notifications?.unreadMessages || 0);
   const isAuthenticated = useSelector((s) => s.auth.isAuthenticated);
+  const isPro = user?.is_pro || user?.plan === 'pro';
 
   useNotificationPoll();
 
@@ -33,7 +35,6 @@ const Navbar = () => {
   ];
 
   return (
-    // Changed to solid bg-white dark:bg-black
     <nav className="fixed top-0 left-0 w-full z-50 bg-white dark:bg-black border-b border-gold-200/30 dark:border-gold-700/30 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
@@ -75,6 +76,12 @@ const Navbar = () => {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            {isPro && (
+              <span className="hidden sm:flex items-center gap-1 px-3 py-1 rounded-full bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-300 text-xs font-bold">
+                <FaCrown size={10} /> PRO
+              </span>
+            )}
+
             <button
               onClick={() => dispatch(toggleTheme())}
               className="p-2 rounded-full hover:bg-gold-50 dark:hover:bg-gold-900/30 transition text-gold-600"
@@ -122,16 +129,10 @@ const Navbar = () => {
               </button>
             ) : (
               <div className="flex items-center gap-2">
-                <Link
-                  to="/login"
-                  className="px-4 py-1.5 text-sm font-medium text-gold-600 hover:text-gold-700 transition"
-                >
+                <Link to="/login" className="px-4 py-1.5 text-sm font-medium text-gold-600 hover:text-gold-700 transition">
                   Log in
                 </Link>
-                <Link
-                  to="/register"
-                  className="px-4 py-1.5 text-sm font-medium text-white bg-gold-600 rounded-full hover:bg-gold-700 shadow-md hover:shadow-lg transition"
-                >
+                <Link to="/register" className="px-4 py-1.5 text-sm font-medium text-white bg-gold-600 rounded-full hover:bg-gold-700 shadow-md hover:shadow-lg transition">
                   Sign up
                 </Link>
               </div>
