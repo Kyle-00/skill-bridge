@@ -44,6 +44,14 @@ def get_or_create_room(user_a, user_b):
     return room
 
 
+def safe_notify(recipient, actor, verb, message, target=''):
+    """Never let a notification failure break the main request."""
+    try:
+        notify(recipient, actor, verb, message, target)
+    except Exception as e:
+        print(f'Notification failed (non-fatal): {e}')
+
+
 class OrderViewSet(viewsets.ModelViewSet):
     serializer_class = OrderSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -75,10 +83,8 @@ class OrderViewSet(viewsets.ModelViewSet):
         ).first()
         if existing:
             return Response(
-                {
-                    'error': 'You already have an active order for this gig.',
-                    'order_id': existing.id,
-                },
+                {'error': 'You already have an active order for this gig.',
+                 'order_id': existing.id},
                 status=400,
             )
 
@@ -99,17 +105,14 @@ class OrderViewSet(viewsets.ModelViewSet):
             room = get_or_create_room(request.user, gig.freelancer)
 
         client_name = request.user.get_full_name() or request.user.username
-        notify(
+        safe_notify(
             gig.freelancer, request.user, 'order_created',
             f'{client_name} ordered your gig "{gig.title}"',
             f'/orders/{order.id}',
         )
 
         return Response(
-            {
-                'order': self.get_serializer(order).data,
-                'chat_room_id': room.id,
-            },
+            {'order': self.get_serializer(order).data, 'chat_room_id': room.id},
             status=status.HTTP_201_CREATED,
         )
 
@@ -138,11 +141,10 @@ class OrderViewSet(viewsets.ModelViewSet):
                 result = stk_push(phone, amount, order.id)
                 if result.get('ResponseCode') == '0':
                     checkout_id = result.get('CheckoutRequestID')
-                    # Remember which order this STK push was for, so the
-                    # callback can mark it funded.
                     if checkout_id:
-                        cache.set(f'mpesa_order_{checkout_id}', order.id, timeout=3600)
-                    # Also log a Transaction row for auditing.
+                        cache.set(
+                            f'mpesa_order_{checkout_id}', order.id, timeout=3600
+                        )
                     Transaction.objects.create(
                         order=order,
                         amount=amount,
@@ -180,27 +182,28 @@ class OrderViewSet(viewsets.ModelViewSet):
                     return Response(
                         {'error': 'Insufficient wallet balance'}, status=400
                     )
-                wallet.balance -= amount
-                wallet.save()
-                WalletTransaction.objects.create(
-                    wallet=wallet,
-                    amount=-amount,
-                    transaction_type='escrow_fund',
-                    description=f'Funded escrow for order #{order.id}',
-                    order_id=order.id,
-                )
-                order.escrow_funded = True
-                order.status = 'in_progress'
-                order.funded_at = timezone.now()
-                order.save()
-                Transaction.objects.create(
-                    order=order,
-                    amount=amount,
-                    provider='wallet',
-                    status='success',
-                )
+                with db_transaction.atomic():
+                    wallet.balance -= amount
+                    wallet.save()
+                    WalletTransaction.objects.create(
+                        wallet=wallet,
+                        amount=-amount,
+                        transaction_type='escrow_fund',
+                        description=f'Funded escrow for order #{order.id}',
+                        order_id=order.id,
+                    )
+                    order.escrow_funded = True
+                    order.status = 'in_progress'
+                    order.funded_at = timezone.now()
+                    order.save()
+                    Transaction.objects.create(
+                        order=order,
+                        amount=amount,
+                        provider='wallet',
+                        status='success',
+                    )
 
-                notify(
+                safe_notify(
                     order.freelancer, request.user, 'escrow_funded',
                     f'Escrow funded for order #{order.id}. You can start working.',
                     f'/orders/{order.id}',
@@ -208,10 +211,12 @@ class OrderViewSet(viewsets.ModelViewSet):
                 return Response({'message': 'Escrow funded successfully'})
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return Response({'error': str(e)}, status=500)
 
     # -----------------------------------------------------------------------
-    # MARK FUNDED (used after successful Stripe payment from the frontend)
+    # MARK FUNDED
     # -----------------------------------------------------------------------
     @action(detail=True, methods=['post'], url_path='mark-funded')
     def mark_funded(self, request, pk=None):
@@ -220,14 +225,16 @@ class OrderViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Only the client can mark as funded'}, status=403)
         if order.escrow_funded:
             return Response({'error': 'Already funded'}, status=400)
-        order.escrow_funded = True
-        order.status = 'in_progress'
-        order.funded_at = timezone.now()
-        order.save()
+        with db_transaction.atomic():
+            order.escrow_funded = True
+            order.status = 'in_progress'
+            order.funded_at = timezone.now()
+            order.save()
+            Transaction.objects.filter(order=order, status='pending').update(
+                status='success'
+            )
 
-        Transaction.objects.filter(order=order, status='pending').update(status='success')
-
-        notify(
+        safe_notify(
             order.freelancer, request.user, 'escrow_funded',
             f'Escrow funded for order #{order.id}. You can start working.',
             f'/orders/{order.id}',
@@ -249,9 +256,14 @@ class OrderViewSet(viewsets.ModelViewSet):
         deliverable_url = request.data.get('deliverable_url', '')
 
         if request.FILES.get('deliverable_file'):
-            file_obj = request.FILES['deliverable_file']
-            from uploads.services import save_upload
-            deliverable_url = save_upload(file_obj, folder='deliverables')
+            try:
+                from uploads.services import save_upload
+                file_obj = request.FILES['deliverable_file']
+                deliverable_url = save_upload(file_obj, folder='deliverables')
+            except Exception as e:
+                return Response(
+                    {'error': f'File upload failed: {e}'}, status=400
+                )
 
         order.deliverable_message = deliverable_message
         order.deliverable_url = deliverable_url
@@ -259,7 +271,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.delivered_at = timezone.now()
         order.save()
 
-        notify(
+        safe_notify(
             order.client, request.user, 'work_delivered',
             f'Work delivered for order #{order.id}. Review and approve.',
             f'/orders/{order.id}',
@@ -294,15 +306,15 @@ class OrderViewSet(viewsets.ModelViewSet):
             order.completed_at = timezone.now()
             order.save()
 
-        notify(
+        safe_notify(
             order.freelancer, request.user, 'work_approved',
-            f'Your work for order #{order.id} was approved. KES {payout} released.',
+            f'Your work for order #{order.id} was approved. ${payout} released.',
             f'/orders/{order.id}',
         )
         return Response({'message': 'Work approved and funds released'})
 
     # -----------------------------------------------------------------------
-    # CANCEL
+    # CANCEL — now bulletproof
     # -----------------------------------------------------------------------
     @action(detail=True, methods=['post'], url_path='cancel')
     def cancel(self, request, pk=None):
@@ -311,29 +323,56 @@ class OrderViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Not allowed'}, status=403)
         if order.status == 'completed':
             return Response({'error': 'Cannot cancel a completed order'}, status=400)
+        if order.status == 'cancelled':
+            return Response({'error': 'Order is already cancelled'}, status=400)
 
-        with db_transaction.atomic():
-            if order.escrow_funded:
+        refund_done = False
+        refund_error = None
+
+        # Refund escrow to the client (wrapped so any wallet error
+        # doesn't prevent the cancel itself from succeeding)
+        if order.escrow_funded:
+            try:
                 client_wallet, _ = Wallet.objects.get_or_create(user=order.client)
-                client_wallet.balance += order.total_amount
-                client_wallet.save()
-                WalletTransaction.objects.create(
-                    wallet=client_wallet,
-                    amount=order.total_amount,
-                    transaction_type='refund',
-                    description=f'Refund for cancelled order #{order.id}',
-                    order_id=order.id,
-                )
-            order.status = 'cancelled'
-            order.save()
+                with db_transaction.atomic():
+                    client_wallet.balance += order.total_amount
+                    client_wallet.save()
+                    WalletTransaction.objects.create(
+                        wallet=client_wallet,
+                        amount=order.total_amount,
+                        transaction_type='refund',
+                        description=f'Refund for cancelled order #{order.id}',
+                        order_id=order.id,
+                    )
+                refund_done = True
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                refund_error = str(e)
 
-        notify(
-            order.freelancer if request.user.id == order.client_id else order.client,
-            request.user, 'order_cancelled',
+        # Mark order as cancelled
+        order.status = 'cancelled'
+        order.save()
+
+        # Notify the other party (non-fatal)
+        other_party = (
+            order.freelancer if request.user.id == order.client_id else order.client
+        )
+        safe_notify(
+            other_party, request.user, 'order_cancelled',
             f'Order #{order.id} was cancelled.',
             f'/orders/{order.id}',
         )
-        return Response({'message': 'Order cancelled'})
+
+        return Response({
+            'message': (
+                'Order cancelled and escrow refunded.'
+                if refund_done
+                else 'Order cancelled.'
+            ),
+            'refunded': refund_done,
+            'refund_error': refund_error,
+        })
 
     # -----------------------------------------------------------------------
     # DISPUTE
@@ -351,7 +390,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.dispute_reason = reason
         order.save()
 
-        notify(
+        safe_notify(
             order.freelancer if request.user.id == order.client_id else order.client,
             request.user, 'order_disputed',
             f'Order #{order.id} was disputed: {reason}',
@@ -360,7 +399,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         return Response({'message': 'Dispute opened'})
 
     # -----------------------------------------------------------------------
-    # MILESTONES (uses OrderMilestone via `order_milestones` related name)
+    # MILESTONES
     # -----------------------------------------------------------------------
     @action(detail=True, methods=['get', 'post'], url_path='milestones')
     def milestones(self, request, pk=None):
@@ -381,7 +420,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                 for m in qs
             ])
 
-        # POST — create a milestone
         if request.user.id not in (order.client_id, order.freelancer_id):
             return Response({'error': 'Not allowed'}, status=403)
 
@@ -390,16 +428,13 @@ class OrderViewSet(viewsets.ModelViewSet):
         description = (request.data.get('description') or '').strip()
 
         if not title or not amount:
-            return Response(
-                {'error': 'title and amount are required'}, status=400
-            )
+            return Response({'error': 'title and amount are required'}, status=400)
 
         try:
             amount_dec = Decimal(str(amount))
         except Exception:
             return Response({'error': 'amount must be a number'}, status=400)
 
-        # Auto-assign the next position
         last = order.order_milestones.order_by('-position').first()
         next_pos = (last.position + 1) if last else 1
 
@@ -432,13 +467,12 @@ class OrderViewSet(viewsets.ModelViewSet):
         order = self.get_object()
         if request.user.id not in (order.client_id, order.freelancer_id):
             return Response({'error': 'Not allowed'}, status=403)
-
         room = get_or_create_room(order.client, order.freelancer)
         return Response({'chat_room_id': room.id})
 
 
 # ---------------------------------------------------------------------------
-# Other viewsets
+# Other viewsets (unchanged)
 # ---------------------------------------------------------------------------
 class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = TransactionSerializer
@@ -485,10 +519,8 @@ class MpesaCallbackView(APIView):
             stk_callback = data.get('Body', {}).get('stkCallback', {})
             result_code = stk_callback.get('ResultCode')
             checkout_id = stk_callback.get('CheckoutRequestID')
-            result_desc = stk_callback.get('ResultDesc', '')
 
             if result_code == 0 and checkout_id:
-                # Wallet deposit path
                 try:
                     tx = WalletTransaction.objects.get(reference=checkout_id)
                     if tx.status == 'pending':
@@ -501,7 +533,6 @@ class MpesaCallbackView(APIView):
                 except WalletTransaction.DoesNotExist:
                     pass
 
-                # Order escrow funding path
                 order_id = cache.get(f'mpesa_order_{checkout_id}')
                 if order_id:
                     order = Order.objects.filter(id=order_id).first()
@@ -513,7 +544,7 @@ class MpesaCallbackView(APIView):
                         Transaction.objects.filter(
                             order=order, provider_ref=checkout_id
                         ).update(status='success')
-                        notify(
+                        safe_notify(
                             order.freelancer, order.client, 'escrow_funded',
                             f'Escrow funded for order #{order.id}. You can start working.',
                             f'/orders/{order.id}',
@@ -549,9 +580,9 @@ class StripeWebhookView(APIView):
                         order.status = 'in_progress'
                         order.funded_at = timezone.now()
                         order.save()
-                        notify(
+                        safe_notify(
                             order.freelancer, order.client, 'escrow_funded',
-                            f'Escrow funded for order #{order.id}. You can start working.',
+                            f'Escrow funded for order #{order.id}.',
                             f'/orders/{order.id}',
                         )
             return Response({'status': 'success'})
