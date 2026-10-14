@@ -12,8 +12,7 @@
 //   { type: 'callout',   variant: 'tip' | 'warning' | 'info', title, text }
 //
 // Optional top-level fields on an article:
-//   icon: 'book' | 'video' | 'file'
-//   videoUrl: string  (embed URL, e.g. https://www.youtube.com/embed/VIDEO_ID)
+//   icon: 'book' | 'file'   (video icon is no longer used)
 //   category: string
 //   readTime: string
 
@@ -139,26 +138,19 @@ export const RESOURCES_DATA = [
   },
 
   // ---------------------------------------------------------------------------
-  // 2. Video Tutorial: Getting Started
+  // 2. Getting Started Guide  (formerly "Video Tutorial: Getting Started")
   // ---------------------------------------------------------------------------
   {
     slug: 'getting-started',
-    title: 'Video Tutorial: Getting Started',
-    description: 'A complete walkthrough of the SkillBridge platform.',
+    title: 'Getting Started Guide',
+    description: 'A complete walkthrough of the SkillBridge platform, from signup to your first payout.',
     category: 'Getting Started',
-    readTime: '12 min watch',
-    icon: 'video',
-    // Replace the video ID below with your own YouTube video ID.
-    // Example: https://www.youtube.com/embed/YOUR_VIDEO_ID
-    videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
+    readTime: '10 min read',
+    icon: 'book',
     content: [
       {
         type: 'paragraph',
-        text: 'Welcome to SkillBridge! This video tutorial walks you through everything you need to know to get started — whether you are a freelancer looking for work or a client ready to hire.',
-      },
-      {
-        type: 'paragraph',
-        text: 'Watch the video above, then use the timestamps below to jump to any section you want to revisit.',
+        text: 'Welcome to SkillBridge. This guide walks you through everything you need to know to get started — whether you are a freelancer looking for work, a client ready to hire, or both.',
       },
       {
         type: 'heading',

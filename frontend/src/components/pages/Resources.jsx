@@ -1,11 +1,10 @@
 import { Link } from 'react-router-dom';
-import { FaBook, FaVideo, FaFileAlt, FaArrowRight, FaTag } from 'react-icons/fa';
+import { FaBook, FaFileAlt, FaArrowRight, FaTag } from 'react-icons/fa';
 import { RESOURCES_DATA } from './resourcesData';
 
 // Map the `icon` string from resourcesData.js to a react-icon component
 const ICON_MAP = {
   book: FaBook,
-  video: FaVideo,
   file: FaFileAlt,
 };
 
