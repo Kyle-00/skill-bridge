@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { FaArrowLeft, FaComments, FaPlus, FaClock } from 'react-icons/fa';
+import {
+  FaArrowLeft, FaComments, FaPlus, FaClock, FaDownload, FaExternalLinkAlt,
+} from 'react-icons/fa';
 import api from '../../api/axiosConfig';
 import FundEscrowModal from './FundEscrowModal';
 import DisputePanel from './DisputePanel';
@@ -26,19 +28,10 @@ const OrderDetail = () => {
     deliverable_file: null,
   });
   const [review, setReview] = useState({
-    quality: 5,
-    communication: 5,
-    timeliness: 5,
-    professionalism: 5,
-    comment: '',
+    quality: 5, communication: 5, timeliness: 5, professionalism: 5, comment: '',
   });
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
 
-  // -----------------------------------------------------------------------
-  // Load order + milestones
-  // All setState calls happen inside async callbacks so we never trigger
-  // the "setState synchronously within an effect" warning.
-  // -----------------------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
 
@@ -58,57 +51,45 @@ const OrderDetail = () => {
     (async () => {
       try {
         const res = await api.get(`orders/${id}/milestones/`);
-        if (!cancelled) {
-          setMilestones(Array.isArray(res.data) ? res.data : []);
-        }
+        if (!cancelled) setMilestones(Array.isArray(res.data) ? res.data : []);
       } catch {
         if (!cancelled) setMilestones([]);
       }
     })();
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [id]);
 
-  // -----------------------------------------------------------------------
-  // Auto-open the Fund Escrow modal if ?fund=1 is present
-  // Deferred with setTimeout so setState is not called synchronously.
-  // -----------------------------------------------------------------------
+  // Auto-open Fund Escrow modal when ?fund=1 is present
   useEffect(() => {
-    if (
-      searchParams.get('fund') === '1' &&
-      order &&
-      !order.escrow_funded
-    ) {
-      const timer = setTimeout(() => {
-        setShowFundModal(true);
-      }, 0);
+    if (searchParams.get('fund') === '1' && order && !order.escrow_funded) {
+      const timer = setTimeout(() => setShowFundModal(true), 0);
       return () => clearTimeout(timer);
     }
   }, [searchParams, order]);
 
-  const fetchOrder = async () => {
-    try {
-      const res = await api.get(`orders/${id}/`);
-      setOrder(res.data);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Order not found.');
-    }
-  };
-
-  const fetchMilestones = async () => {
-    try {
-      const res = await api.get(`orders/${id}/milestones/`);
-      setMilestones(Array.isArray(res.data) ? res.data : []);
-    } catch {
-      setMilestones([]);
-    }
-  };
+  // Poll for status changes while the order is delivered and awaiting review
+  useEffect(() => {
+    if (!order) return;
+    if (order.status === 'completed' || order.status === 'cancelled') return;
+    const t = setInterval(async () => {
+      try {
+        const res = await api.get(`orders/${id}/`);
+        setOrder(res.data);
+      } catch { /* ignore */ }
+    }, 10000);
+    return () => clearInterval(t);
+  }, [order, id]);
 
   const reload = async () => {
-    await fetchOrder();
-    await fetchMilestones();
+    try {
+      const [o, m] = await Promise.all([
+        api.get(`orders/${id}/`),
+        api.get(`orders/${id}/milestones/`).catch(() => ({ data: [] })),
+      ]);
+      setOrder(o.data);
+      setMilestones(Array.isArray(m.data) ? m.data : []);
+    } catch { /* ignore */ }
   };
 
   const runAction = async (url, body) => {
@@ -141,10 +122,7 @@ const OrderDetail = () => {
     if (deliverable.deliverable_file) {
       const formData = new FormData();
       formData.append('deliverable_file', deliverable.deliverable_file);
-      formData.append(
-        'deliverable_message',
-        deliverable.deliverable_message || ''
-      );
+      formData.append('deliverable_message', deliverable.deliverable_message || '');
       formData.append('deliverable_url', deliverable.deliverable_url || '');
       runAction('submit-work', formData);
     } else {
@@ -156,18 +134,13 @@ const OrderDetail = () => {
   };
 
   const handleApprove = () => {
-    if (
-      !window.confirm(
-        'Approve this work and release funds to the freelancer?'
-      )
-    )
-      return;
+    if (!window.confirm('Approve this work and release funds to the freelancer?')) return;
     runAction('approve-work');
   };
 
   const handleCancel = () => {
     const msg = order.escrow_funded
-      ? 'Cancel this order? The escrow funds will be refunded to your wallet.'
+      ? 'Cancel this order? Escrow funds will be refunded to the client wallet.'
       : 'Cancel this order?';
     if (!window.confirm(msg)) return;
     runAction('cancel');
@@ -180,7 +153,7 @@ const OrderDetail = () => {
     if (!amount) return;
     try {
       await api.post(`orders/${id}/milestones/`, { title, amount });
-      await fetchMilestones();
+      await reload();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to add milestone.');
     }
@@ -225,6 +198,9 @@ const OrderDetail = () => {
 
   const isClient = user?.id === order.client?.id;
   const isFreelancer = user?.id === order.freelancer?.id;
+  const hasDeliverable = Boolean(
+    order.deliverable_url || order.deliverable_message || order.deliverable_file
+  );
 
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-6">
@@ -247,15 +223,15 @@ const OrderDetail = () => {
             </p>
           </div>
           <div className="flex gap-2 items-center flex-wrap">
-            <span
-              className={`px-3 py-1 rounded-full text-sm font-medium ${
-                order.status === 'completed'
-                  ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
-                  : order.status === 'disputed'
-                  ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
-                  : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300'
-              }`}
-            >
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+              order.status === 'completed'
+                ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
+                : order.status === 'disputed'
+                ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                : order.status === 'delivered'
+                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
+                : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300'
+            }`}>
               {order.status}
             </span>
 
@@ -265,9 +241,7 @@ const OrderDetail = () => {
               className="flex items-center gap-2 bg-gold-600 text-white px-4 py-1.5 rounded-full hover:bg-gold-700 disabled:opacity-50 text-sm font-medium transition"
             >
               <FaComments size={12} />
-              {chatLoading
-                ? 'Opening…'
-                : `Chat ${isClient ? 'Freelancer' : 'Client'}`}
+              {chatLoading ? 'Opening…' : `Chat ${isClient ? 'Freelancer' : 'Client'}`}
             </button>
           </div>
         </div>
@@ -287,16 +261,67 @@ const OrderDetail = () => {
           </div>
           <div>
             <span className="text-gray-500">Escrow:</span>{' '}
-            <span
-              className={`font-medium ${
-                order.escrow_funded ? 'text-green-600' : 'text-yellow-600'
-              }`}
-            >
+            <span className={`font-medium ${
+              order.escrow_funded ? 'text-green-600' : 'text-yellow-600'
+            }`}>
               {order.escrow_funded ? 'Funded' : 'Not funded'}
             </span>
           </div>
         </div>
       </div>
+
+      {/* Deliverable — NEW: shows what the freelancer submitted */}
+      {hasDeliverable && (
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 mb-6 border-l-4 border-gold-500">
+          <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+            <FaDownload className="text-gold-600" /> Work Delivered
+          </h2>
+
+          {order.deliverable_message && (
+            <p className="text-sm text-gray-700 dark:text-gray-300 mb-3 whitespace-pre-line">
+              {order.deliverable_message}
+            </p>
+          )}
+
+          <div className="flex flex-wrap gap-3">
+            {order.deliverable_file && (
+              <a
+                href={order.deliverable_file}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-gold-600 text-white px-4 py-2 rounded-lg hover:bg-gold-700 text-sm font-semibold"
+              >
+                <FaDownload size={12} /> Download File
+              </a>
+            )}
+            {order.deliverable_url && (
+              <a
+                href={order.deliverable_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 border border-gold-600 text-gold-600 px-4 py-2 rounded-lg hover:bg-gold-50 dark:hover:bg-gold-900/30 text-sm font-semibold"
+              >
+                <FaExternalLinkAlt size={12} /> Open Link
+              </a>
+            )}
+          </div>
+
+          {isClient && order.status === 'delivered' && (
+            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                Review the work above, then approve it to release escrow funds to the freelancer.
+              </p>
+              <button
+                onClick={handleApprove}
+                disabled={actionLoading}
+                className="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg disabled:opacity-50 font-semibold"
+              >
+                Approve & Release Funds
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Actions */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 mb-6">
@@ -318,10 +343,7 @@ const OrderDetail = () => {
                 placeholder="Deliverable URL (optional if uploading a file)"
                 value={deliverable.deliverable_url}
                 onChange={(e) =>
-                  setDeliverable((d) => ({
-                    ...d,
-                    deliverable_url: e.target.value,
-                  }))
+                  setDeliverable((d) => ({ ...d, deliverable_url: e.target.value }))
                 }
                 className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
               />
@@ -329,8 +351,7 @@ const OrderDetail = () => {
                 type="file"
                 onChange={(e) =>
                   setDeliverable((d) => ({
-                    ...d,
-                    deliverable_file: e.target.files[0] || null,
+                    ...d, deliverable_file: e.target.files[0] || null,
                   }))
                 }
                 className="w-full text-sm"
@@ -340,8 +361,7 @@ const OrderDetail = () => {
                 value={deliverable.deliverable_message}
                 onChange={(e) =>
                   setDeliverable((d) => ({
-                    ...d,
-                    deliverable_message: e.target.value,
+                    ...d, deliverable_message: e.target.value,
                   }))
                 }
                 className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
@@ -356,28 +376,22 @@ const OrderDetail = () => {
             </div>
           )}
 
-          {isClient && order.status === 'delivered' && (
-            <button
-              onClick={handleApprove}
-              disabled={actionLoading}
-              className="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg disabled:opacity-50"
-            >
-              Approve & Release Funds
-            </button>
-          )}
-
           {order.status !== 'completed' && order.status !== 'cancelled' && (
             <button
               onClick={handleCancel}
               disabled={actionLoading}
               className="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-lg disabled:opacity-50"
             >
-              Cancel Order
+              {actionLoading ? 'Cancelling…' : 'Cancel Order'}
             </button>
           )}
         </div>
 
-        {error && <p className="text-red-600 mt-3 text-sm">{error}</p>}
+        {error && (
+          <div className="mt-3 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
       </div>
 
       {/* Milestones */}
@@ -422,66 +436,47 @@ const OrderDetail = () => {
         )}
       </div>
 
-      {/* Dispute */}
       <DisputePanel order={order} onChanged={reload} />
 
-      {/* Review */}
-      {order.status === 'completed' &&
-        !reviewSubmitted &&
-        !order.has_review && (
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
-            <h2 className="text-lg font-semibold mb-4">Leave a Review</h2>
-            <form onSubmit={handleSubmitReview} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                {[
-                  'quality',
-                  'communication',
-                  'timeliness',
-                  'professionalism',
-                ].map((field) => (
-                  <div key={field}>
-                    <label className="block text-sm capitalize mb-1">
-                      {field}
-                    </label>
-                    <select
-                      value={review[field]}
-                      onChange={(e) =>
-                        setReview((r) => ({
-                          ...r,
-                          [field]: Number(e.target.value),
-                        }))
-                      }
-                      className="w-full p-2 rounded-lg border border-gray-200 dark:border-gray-700"
-                    >
-                      {[1, 2, 3, 4, 5].map((n) => (
-                        <option key={n} value={n}>
-                          {n}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ))}
-              </div>
-              <textarea
-                placeholder="Comment (optional)"
-                value={review.comment}
-                onChange={(e) =>
-                  setReview((r) => ({ ...r, comment: e.target.value }))
-                }
-                className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700"
-              />
-              <button
-                type="submit"
-                disabled={actionLoading}
-                className="bg-gold-600 hover:bg-gold-700 text-white px-5 py-2 rounded-lg disabled:opacity-50"
-              >
-                Submit Review
-              </button>
-            </form>
-          </div>
-        )}
+      {order.status === 'completed' && !reviewSubmitted && !order.has_review && (
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
+          <h2 className="text-lg font-semibold mb-4">Leave a Review</h2>
+          <form onSubmit={handleSubmitReview} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              {['quality', 'communication', 'timeliness', 'professionalism'].map((field) => (
+                <div key={field}>
+                  <label className="block text-sm capitalize mb-1">{field}</label>
+                  <select
+                    value={review[field]}
+                    onChange={(e) =>
+                      setReview((r) => ({ ...r, [field]: Number(e.target.value) }))
+                    }
+                    className="w-full p-2 rounded-lg border border-gray-200 dark:border-gray-700"
+                  >
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+            <textarea
+              placeholder="Comment (optional)"
+              value={review.comment}
+              onChange={(e) => setReview((r) => ({ ...r, comment: e.target.value }))}
+              className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700"
+            />
+            <button
+              type="submit"
+              disabled={actionLoading}
+              className="bg-gold-600 hover:bg-gold-700 text-white px-5 py-2 rounded-lg disabled:opacity-50"
+            >
+              Submit Review
+            </button>
+          </form>
+        </div>
+      )}
 
-      {/* Fund Escrow Modal */}
       {showFundModal && (
         <FundEscrowModal
           order={order}
