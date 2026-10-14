@@ -42,6 +42,13 @@ def get_or_create_room(user_a, user_b):
     return room
 
 
+def safe_notify(recipient, actor, verb, message, target=''):
+    try:
+        notify(recipient, actor, verb, message, target)
+    except Exception as e:
+        print(f'Notification failed (non-fatal): {e}')
+
+
 class ProjectViewSet(viewsets.ModelViewSet):
     queryset = Project.objects.all().order_by('-created_at')
     serializer_class = ProjectSerializer
@@ -63,40 +70,24 @@ class ProjectViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(client=self.request.user)
 
-    # -----------------------------------------------------------------------
-    # DELETE — only the owner can delete their project
-    # -----------------------------------------------------------------------
     def destroy(self, request, *args, **kwargs):
         project = self.get_object()
-
         if project.client_id != request.user.id:
             return Response(
-                {'error': 'You can only delete your own projects.'},
-                status=403,
+                {'error': 'You can only delete your own projects.'}, status=403
             )
-
-        # Prevent deletion of projects that have active orders
         active_orders = Order.objects.filter(
             project=project,
-            status__in=['pending', 'in_progress', 'delivered', 'disputed'],
+            status__in=['pending', 'funded', 'in_progress', 'delivered', 'disputed'],
         ).exists()
         if active_orders:
             return Response(
-                {
-                    'error': (
-                        'This project has active orders and cannot be deleted. '
-                        'Cancel or complete those orders first.'
-                    )
-                },
+                {'error': 'This project has active orders and cannot be deleted.'},
                 status=400,
             )
-
         project.delete()
         return Response({'message': 'Project deleted successfully.'}, status=204)
 
-    # -----------------------------------------------------------------------
-    # Proposals list (owner only)
-    # -----------------------------------------------------------------------
     @action(detail=True, methods=['get'], url_path='proposals-list')
     def proposals_list(self, request, pk=None):
         project = self.get_object()
@@ -106,7 +97,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
         return Response(ProposalSerializer(proposals, many=True).data)
 
     # -----------------------------------------------------------------------
-    # Accept proposal — create order + chat room
+    # ACCEPT PROPOSAL — auto-funds escrow from the client's wallet
     # -----------------------------------------------------------------------
     @action(detail=True, methods=['post'], url_path='accept-proposal')
     def accept_proposal(self, request, pk=None):
@@ -124,16 +115,43 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
         proposal = get_object_or_404(Proposal, id=proposal_id, project=project)
 
+        total = Decimal(str(proposal.proposed_price))
+        fee_rate = get_platform_fee_rate(proposal.freelancer)
+        fee = (total * fee_rate).quantize(Decimal('0.01'))
+
+        # Try auto-funding from the client's wallet
+        from wallet.models import Wallet, Transaction as WalletTransaction
+
+        escrow_funded = False
+        order_status = 'pending'
+        funded_at = None
+
         with db_transaction.atomic():
+            # Lock the client's wallet for the balance check
+            client_wallet, _ = Wallet.objects.get_or_create(user=request.user)
+            client_wallet = Wallet.objects.select_for_update().get(
+                pk=client_wallet.pk
+            )
+
+            if client_wallet.balance >= total:
+                client_wallet.balance -= total
+                client_wallet.save()
+                WalletTransaction.objects.create(
+                    wallet=client_wallet,
+                    amount=-total,
+                    transaction_type='escrow_fund',
+                    description=f'Auto-funded escrow for "{project.title}"',
+                )
+                escrow_funded = True
+                order_status = 'in_progress'
+                funded_at = timezone.now()
+
             proposal.status = 'accepted'
             proposal.save()
             project.proposals.exclude(id=proposal.id).update(status='rejected')
             project.status = 'in_progress'
             project.save()
 
-            total = Decimal(str(proposal.proposed_price))
-            fee_rate = get_platform_fee_rate(proposal.freelancer)
-            fee = (total * fee_rate).quantize(Decimal('0.01'))
             order = Order.objects.create(
                 order_type='project',
                 project=project,
@@ -141,27 +159,38 @@ class ProjectViewSet(viewsets.ModelViewSet):
                 freelancer=proposal.freelancer,
                 total_amount=total,
                 platform_fee=fee,
-                status='pending',
+                status=order_status,
+                escrow_funded=escrow_funded,
+                funded_at=funded_at,
             )
             room = get_or_create_room(request.user, proposal.freelancer)
 
         client_name = request.user.get_full_name() or request.user.username
-        notify(
+        safe_notify(
             recipient=proposal.freelancer,
             actor=request.user,
             verb='proposal_accepted',
-            message=f'{client_name} accepted your proposal for "{project.title}"',
+            message=(
+                f'{client_name} accepted your proposal for "{project.title}"'
+                + (' and funded the escrow.' if escrow_funded else '.')
+            ),
             target=f'/orders/{order.id}',
         )
+
         return Response({
-            'message': 'Proposal accepted',
+            'message': (
+                'Proposal accepted and escrow funded.'
+                if escrow_funded
+                else 'Proposal accepted. Fund the escrow to start work.'
+            ),
             'order_id': order.id,
             'chat_room_id': room.id,
+            'escrow_funded': escrow_funded,
+            'needs_funding': not escrow_funded,
+            'total': str(total),
+            'wallet_balance': str(client_wallet.balance),
         })
 
-    # -----------------------------------------------------------------------
-    # Milestones
-    # -----------------------------------------------------------------------
     @action(detail=True, methods=['get'], url_path='milestones')
     def milestones(self, request, pk=None):
         project = self.get_object()
@@ -194,8 +223,6 @@ class ProposalViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
-
-        # Free plan users: 5 proposals per calendar month
         if not user.has_active_pro_plan():
             month_start = timezone.now().replace(
                 day=1, hour=0, minute=0, second=0, microsecond=0
@@ -209,7 +236,6 @@ class ProposalViewSet(viewsets.ModelViewSet):
                     f'Free plan allows {FREE_PROPOSAL_LIMIT} proposals per month. '
                     'Upgrade to Pro for unlimited proposals.'
                 )
-
         serializer.save(freelancer=user)
 
 
@@ -220,7 +246,8 @@ class MilestoneViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         return Milestone.objects.filter(
-            models.Q(project__client=user) | models.Q(project__proposals__freelancer=user)
+            models.Q(project__client=user)
+            | models.Q(project__proposals__freelancer=user)
         ).distinct().order_by('due_date')
 
 
