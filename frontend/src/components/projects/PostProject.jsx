@@ -24,12 +24,35 @@ const PostProject = () => {
     e.preventDefault();
     setSubmitting(true);
     setError('');
+
     try {
-      await api.post('projects/', form);
-      navigate('/projects');
+      await api.post('projects/', {
+        ...form,
+        budget_min: parseFloat(form.budget_min),
+        budget_max: parseFloat(form.budget_max),
+      });
+      navigate('/my-projects');
     } catch (err) {
-      console.error(err);
-      setError('Failed to post project. Please try again.');
+      // Show the actual backend error instead of a generic message
+      const data = err.response?.data;
+      let message = 'Failed to post project. Please try again.';
+
+      if (typeof data === 'string') {
+        message = data;
+      } else if (data && typeof data === 'object') {
+        const firstKey = Object.keys(data)[0];
+        if (firstKey) {
+          const val = data[firstKey];
+          message = `${firstKey}: ${Array.isArray(val) ? val[0] : val}`;
+        }
+      } else if (err.response?.status === 401) {
+        message = 'You are not logged in. Please log in again.';
+      } else if (err.response?.status === 403) {
+        message = 'You do not have permission to post projects.';
+      }
+
+      setError(message);
+      console.error('PostProject error:', err.response?.status, err.response?.data);
     } finally {
       setSubmitting(false);
     }
@@ -157,7 +180,7 @@ const PostProject = () => {
             </button>
             <button
               type="button"
-              onClick={() => navigate('/projects')}
+              onClick={() => navigate('/my-projects')}
               className="px-6 py-3 rounded-lg border border-gold-600 text-gold-600 hover:bg-gold-50 dark:hover:bg-gold-900/30 transition"
             >
               Cancel
