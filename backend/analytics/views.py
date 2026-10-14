@@ -15,6 +15,78 @@ from reviews.models import Review
 from wallet.models import Transaction as WalletTransaction
 
 
+def compute_profile_completion(user):
+    """
+    Role-aware profile completion.
+
+    Freelancer (role='freelancer'):
+        Basic (4 fields x 10)         = 40
+        Freelancer (4 fields x 15)    = 60
+        Total: 100
+
+    Client (role='client'):
+        Basic (4 fields x 15)         = 60
+        Company name                  = 40
+        Total: 100
+
+    Both (role='both'):
+        Basic (4 fields x 10)         = 40
+        Freelancer (4 fields x 7.5)   = 30
+        Company name                  = 30
+        Total: 100
+    """
+    role = user.role or 'both'
+    missing = []
+
+    basic_checks = [
+        (user.first_name, 'First name'),
+        (user.last_name, 'Last name'),
+        (user.email, 'Email'),
+        (user.phone_number, 'Phone number'),
+    ]
+
+    if role == 'freelancer':
+        basic_weight, freelancer_weight, client_weight = 10, 15, 0
+    elif role == 'client':
+        basic_weight, freelancer_weight, client_weight = 15, 0, 40
+    else:  # both
+        basic_weight, freelancer_weight, client_weight = 10, 7.5, 30
+
+    score = 0.0
+
+    for val, label in basic_checks:
+        if val:
+            score += basic_weight
+        else:
+            missing.append(label)
+
+    if role in ('freelancer', 'both'):
+        fp = getattr(user, 'freelancer_profile', None)
+        fp_checks = [
+            (fp.title if fp else None, 'Professional title'),
+            (fp.overview if fp else None, 'Overview'),
+            (fp.skills if fp else None, 'Skills'),
+            (fp.portfolio if fp else None, 'Portfolio'),
+        ]
+        for val, label in fp_checks:
+            if val:
+                score += freelancer_weight
+            else:
+                missing.append(label)
+
+    if role in ('client', 'both'):
+        cp = getattr(user, 'client_profile', None)
+        if cp and cp.company_name:
+            score += client_weight
+        else:
+            missing.append('Company name')
+
+    return {
+        'percentage': int(round(score)),
+        'missing_fields': missing,
+    }
+
+
 class AdminPlatformStatsView(APIView):
     permission_classes = [IsAdminUser]
 
@@ -35,7 +107,7 @@ class AdminPlatformStatsView(APIView):
         total_orders = Order.objects.count()
         completed_orders = Order.objects.filter(status='completed').count()
         open_disputes = Order.objects.filter(status='disputed').count()
-        
+
         platform_revenue = Transaction.objects.filter(
             status='success'
         ).aggregate(total=Sum('fee'))['total'] or 0
@@ -50,7 +122,8 @@ class AdminPlatformStatsView(APIView):
 
         recent_orders = list(
             Order.objects.order_by('-created_at')[:5].values(
-                'id', 'status', 'total_amount', 'created_at', 'client__username', 'freelancer__username'
+                'id', 'status', 'total_amount', 'created_at',
+                'client__username', 'freelancer__username'
             )
         )
         recent_gigs = list(
@@ -148,15 +221,6 @@ class FreelancerStatsView(APIView):
             )
         )
 
-        # Updated profile completion logic to match actual model fields
-        profile = getattr(user, 'freelancer_profile', None)
-        completion = 0
-        if profile:
-            if profile.title: completion += 25
-            if profile.overview: completion += 25
-            if profile.skills: completion += 25
-            if profile.portfolio: completion += 25
-
         return Response({
             'earnings': {'labels': labels, 'series': earnings_series},
             'lifetime_earnings': round(float(all_time_earnings), 2),
@@ -185,7 +249,7 @@ class FreelancerStatsView(APIView):
             ],
             'pending_milestone_reviews': pending_milestones,
             'disputes_lost': disputes_lost,
-            'profile_completion': completion,
+            'profile_completion': compute_profile_completion(user),
             'recent_activity': recent_orders,
         })
 
@@ -196,14 +260,14 @@ class ClientStatsView(APIView):
 
     def get(self, request):
         user = request.user
-        
+
         active_projects = Project.objects.filter(client=user, status='in_progress').count()
         open_proposals = Proposal.objects.filter(project__client=user).count()
-        
+
         pending_milestones = user.orders_as_client.filter(
             order_milestones__status='submitted'
         ).distinct().count()
-        
+
         total_spent = Order.objects.filter(client=user, status='completed').aggregate(
             total=Sum('total_amount')
         )['total'] or 0
@@ -224,6 +288,7 @@ class ClientStatsView(APIView):
             'open_proposals': open_proposals,
             'pending_milestones': pending_milestones,
             'total_spent': round(float(total_spent), 2),
+            'profile_completion': compute_profile_completion(user),
             'recent_activity': {
                 'projects': recent_projects,
                 'orders': recent_orders,
