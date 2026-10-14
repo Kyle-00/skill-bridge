@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   FaHome, FaUser, FaBriefcase, FaComments, FaCog, FaSignOutAlt,
   FaWallet, FaUsers, FaUserShield, FaPlus, FaSearch, FaList,
-  FaShoppingCart, FaProjectDiagram, FaArrowUp,
+  FaShoppingCart, FaProjectDiagram, FaArrowUp, FaCrown,
 } from 'react-icons/fa';
 import { logout } from '../../store/authSlice';
 import { closeSidebar } from '../../store/sidebarSlice';
@@ -16,6 +16,7 @@ const Sidebar = () => {
 
   const role = user?.role || 'both';
   const isAdmin = user?.is_superuser;
+  const isPro = user?.is_pro || user?.plan === 'pro';
 
   const handleLogout = () => {
     dispatch(logout());
@@ -41,18 +42,40 @@ const Sidebar = () => {
     >
       <div className="p-4 flex flex-col gap-1 h-full">
         <div className="flex items-center gap-3 p-3 mb-2 border-b border-gold-200 dark:border-gold-700">
-          <div className="w-10 h-10 rounded-full bg-gold-500 flex items-center justify-center text-white font-bold shrink-0">
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shrink-0 ${isPro ? 'bg-gradient-to-br from-gold-400 to-gold-600 ring-2 ring-gold-300' : 'bg-gold-500'}`}>
             {user?.username?.[0]?.toUpperCase() || 'U'}
           </div>
-          <div className="min-w-0">
-            <div className="font-semibold text-gold-700 dark:text-gold-300 text-sm truncate">
-              {user?.username || 'User'}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <div className="font-semibold text-gold-700 dark:text-gold-300 text-sm truncate">
+                {user?.username || 'User'}
+              </div>
+              {isPro && (
+                <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-300 text-[9px] font-bold shrink-0">
+                  <FaCrown size={8} /> PRO
+                </span>
+              )}
             </div>
             <div className="text-xs text-gray-500 dark:text-gray-400 capitalize">
               {isAdmin ? 'Administrator' : role}
             </div>
           </div>
         </div>
+
+        {!isPro && !isAdmin && (
+          <NavLink
+            to="/pricing/pro/checkout"
+            className="block p-3 rounded-xl bg-gradient-to-br from-gold-500 to-gold-700 text-white shadow-lg hover:shadow-xl transition mb-3"
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <FaCrown size={14} />
+              <span className="text-xs font-bold uppercase tracking-wider">Upgrade to Pro</span>
+            </div>
+            <p className="text-[10px] opacity-90 leading-snug">
+              Unlock unlimited proposals and a 3% fee. $9.99/month.
+            </p>
+          </NavLink>
+        )}
 
         {isAdmin && (
           <>
