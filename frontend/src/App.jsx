@@ -88,11 +88,20 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/choose-role" element={<ChooseRole />} />
+
+            {/* Gigs */}
             <Route path="/gigs" element={<GigList />} />
             <Route path="/gigs/:id" element={<GigDetail />} />
+
+            {/* Projects */}
             <Route path="/projects" element={<ProjectList />} />
             <Route path="/projects/:id" element={<ProjectDetail />} />
+
+            {/* Hire Talent (both paths point to the same component) */}
+            <Route path="/hire-talent" element={<HireTalent />} />
             <Route path="/freelancers" element={<HireTalent />} />
+
+            {/* Static / informational pages */}
             <Route path="/why-skillbridge" element={<WhySkillBridge />} />
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/pricing/:plan/checkout" element={<PlanCheckout />} />
