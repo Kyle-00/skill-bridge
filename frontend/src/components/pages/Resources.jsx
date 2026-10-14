@@ -1,47 +1,63 @@
 import { Link } from 'react-router-dom';
-import { FaBook, FaVideo, FaFileAlt, FaExternalLinkAlt } from 'react-icons/fa';
-import { RESOURCES_DATA } from './resourcesData';
+import { FaBook, FaVideo, FaArrowRight } from 'react-icons/fa';
+import { resources } from '../../data/resources';
 
-const iconMap = {
-  book: FaBook,
-  video: FaVideo,
-  file: FaFileAlt,
+const iconFor = (type) => {
+  if (type === 'video') return FaVideo;
+  return FaBook;
 };
 
 const Resources = () => {
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <h1 className="text-4xl font-bold text-gold-700 dark:text-gold-300 text-center mb-4">
-        Resources
-      </h1>
-      <p className="text-center text-gray-600 dark:text-gray-400 max-w-2xl mx-auto mb-12">
-        Learn, grow, and succeed with SkillBridge.
-      </p>
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-12">
+      {/* Header */}
+      <div className="text-center mb-12">
+        <h1 className="text-4xl md:text-5xl font-bold text-gold-700 dark:text-gold-300 mb-4">
+          Resources
+        </h1>
+        <p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+          Learn, grow, and succeed with SkillBridge. Guides, tutorials, and handbooks
+          for freelancers and clients.
+        </p>
+      </div>
 
-      <div className="grid md:grid-cols-2 gap-8">
-        {RESOURCES_DATA.map((item) => {
-          const Icon = iconMap[item.icon] || FaBook;
+      {/* Grid of articles */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {resources.map((article) => {
+          const Icon = iconFor(article.icon);
           return (
-            <div
-              key={item.slug}
-              className="glass p-6 rounded-2xl shadow-lg flex gap-4 items-start hover:shadow-xl transition"
+            <Link
+              key={article.slug}
+              to={`/resources/${article.slug}`}
+              className="group glass p-6 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 flex flex-col"
             >
-              <div className="text-3xl text-gold-500 shrink-0">
-                <Icon />
+              <div className="flex items-start gap-4 mb-4">
+                <div className="w-12 h-12 rounded-xl bg-gold-100 dark:bg-gold-900/40 flex items-center justify-center shrink-0">
+                  <Icon className="text-gold-600 text-xl" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-gold-600 dark:text-gold-400">
+                      {article.category}
+                    </span>
+                    {article.readTime && (
+                      <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                        &middot; {article.readTime}
+                      </span>
+                    )}
+                  </div>
+                  <h2 className="text-lg font-bold text-gold-800 dark:text-gold-200 group-hover:text-gold-600 dark:group-hover:text-gold-400 transition line-clamp-2">
+                    {article.title}
+                  </h2>
+                </div>
               </div>
-              <div className="flex-1">
-                <h3 className="text-xl font-semibold text-gold-800 dark:text-gold-200">
-                  {item.title}
-                </h3>
-                <p className="text-gray-600 dark:text-gray-400 mt-1">{item.desc}</p>
-                <Link
-                  to={`/resources/${item.slug}`}
-                  className="inline-flex items-center gap-1 text-gold-600 hover:underline text-sm mt-2"
-                >
-                  Read more <FaExternalLinkAlt size={12} />
-                </Link>
+              <p className="text-sm text-gray-600 dark:text-gray-400 flex-1 mb-4">
+                {article.description}
+              </p>
+              <div className="flex items-center gap-2 text-sm font-semibold text-gold-600 dark:text-gold-400 group-hover:gap-3 transition-all">
+                Read more <FaArrowRight size={12} />
               </div>
-            </div>
+            </Link>
           );
         })}
       </div>
