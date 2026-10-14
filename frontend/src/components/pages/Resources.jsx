@@ -1,10 +1,12 @@
 import { Link } from 'react-router-dom';
-import { FaBook, FaVideo, FaArrowRight } from 'react-icons/fa';
-import { resources } from '../../data/resources';
+import { FaBook, FaVideo, FaFileAlt, FaArrowRight, FaTag } from 'react-icons/fa';
+import { RESOURCES_DATA } from './resourcesData';
 
-const iconFor = (type) => {
-  if (type === 'video') return FaVideo;
-  return FaBook;
+// Map the `icon` string from resourcesData.js to a react-icon component
+const ICON_MAP = {
+  book: FaBook,
+  video: FaVideo,
+  file: FaFileAlt,
 };
 
 const Resources = () => {
@@ -23,8 +25,8 @@ const Resources = () => {
 
       {/* Grid of articles */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {resources.map((article) => {
-          const Icon = iconFor(article.icon);
+        {RESOURCES_DATA.map((article) => {
+          const Icon = ICON_MAP[article.icon] || FaBook;
           return (
             <Link
               key={article.slug}
@@ -36,10 +38,12 @@ const Resources = () => {
                   <Icon className="text-gold-600 text-xl" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-gold-600 dark:text-gold-400">
-                      {article.category}
-                    </span>
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    {article.category && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-gold-600 dark:text-gold-400">
+                        <FaTag size={8} /> {article.category}
+                      </span>
+                    )}
                     {article.readTime && (
                       <span className="text-[10px] text-gray-500 dark:text-gray-400">
                         &middot; {article.readTime}

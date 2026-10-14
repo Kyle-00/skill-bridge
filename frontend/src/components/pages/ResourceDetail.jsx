@@ -1,6 +1,6 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { FaArrowLeft, FaClock, FaTag } from 'react-icons/fa';
-import { getResourceBySlug } from '../../data/resources';
+import { getResourceBySlug } from './resourcesData';
 
 const ResourceDetail = () => {
   const { id } = useParams();
