@@ -4,7 +4,6 @@ import requests
 import stripe
 from django.conf import settings
 from django.shortcuts import get_object_or_404
-from django.contrib.auth import authenticate
 from rest_framework import status, permissions, serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -12,7 +11,9 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import User, FreelancerProfile, ClientProfile, SubscriptionPayment
+from .models import (
+    User, FreelancerProfile, ClientProfile, SubscriptionPayment,
+)
 from .serializers import (
     UserSerializer,
     RegisterSerializer,
@@ -25,6 +26,34 @@ from .serializers import (
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def _get_or_create_freelancer_profile(user):
+    """Never fails — creates a blank profile if one doesn't exist."""
+    profile, _ = FreelancerProfile.objects.get_or_create(
+        user=user,
+        defaults={
+            'title': '',
+            'overview': '',
+            'skills': [],
+            'portfolio': [],
+        },
+    )
+    return profile
+
+
+def _get_or_create_client_profile(user):
+    profile, _ = ClientProfile.objects.get_or_create(
+        user=user,
+        defaults={'company_name': ''},
+    )
+    return profile
+
+
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
 class EmailOrUsernameTokenObtainPairSerializer(TokenObtainPairSerializer):
     username_field = 'email'
 
@@ -88,10 +117,7 @@ class GoogleVerifyView(APIView):
                 timeout=10,
             )
             if response.status_code != 200:
-                return Response(
-                    {'error': 'Invalid Google token.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+                return Response({'error': 'Invalid Google token.'}, status=400)
             payload = response.json()
             google_id = payload.get('sub')
             email = payload.get('email')
@@ -100,10 +126,7 @@ class GoogleVerifyView(APIView):
             last_name = name[1] if len(name) > 1 else ''
 
             if not google_id or not email:
-                return Response(
-                    {'error': 'Missing user info from Google.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+                return Response({'error': 'Missing user info from Google.'}, status=400)
 
             user = User.objects.filter(google_id=google_id).first()
             is_new_user = False
@@ -137,25 +160,17 @@ class GoogleVerifyView(APIView):
             create_role_resources(user, user.role)
             refresh = RefreshToken.for_user(user)
 
-            return Response(
-                {
-                    'user': UserSerializer(user).data,
-                    'access': str(refresh.access_token),
-                    'refresh': str(refresh),
-                    'is_new_user': is_new_user,
-                }
-            )
+            return Response({
+                'user': UserSerializer(user).data,
+                'access': str(refresh.access_token),
+                'refresh': str(refresh),
+                'is_new_user': is_new_user,
+            })
 
         except requests.RequestException as e:
-            return Response(
-                {'error': f'Google verification failed: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return Response({'error': f'Google verification failed: {str(e)}'}, status=500)
         except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return Response({'error': str(e)}, status=500)
 
 
 class UserProfileView(APIView):
@@ -176,11 +191,11 @@ class FreelancerProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        profile, _ = FreelancerProfile.objects.get_or_create(user=request.user)
+        profile = _get_or_create_freelancer_profile(request.user)
         return Response(FreelancerProfileSerializer(profile).data)
 
     def put(self, request):
-        profile, _ = FreelancerProfile.objects.get_or_create(user=request.user)
+        profile = _get_or_create_freelancer_profile(request.user)
         serializer = FreelancerProfileSerializer(
             profile, data=request.data, partial=True
         )
@@ -194,11 +209,11 @@ class ClientProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        profile, _ = ClientProfile.objects.get_or_create(user=request.user)
+        profile = _get_or_create_client_profile(request.user)
         return Response(ClientProfileSerializer(profile).data)
 
     def put(self, request):
-        profile, _ = ClientProfile.objects.get_or_create(user=request.user)
+        profile = _get_or_create_client_profile(request.user)
         serializer = ClientProfileSerializer(
             profile, data=request.data, partial=True
         )
@@ -252,7 +267,7 @@ class FreelancerListView(APIView):
     def get(self, request):
         freelancers = User.objects.filter(
             role__in=['freelancer', 'both'], is_active=True
-        ).order_by('-date_join」ed' if False else '-date_joined')
+        ).order_by('-date_joined')
         return Response(UserSerializer(freelancers, many=True).data)
 
 
@@ -264,32 +279,83 @@ class ChooseRoleView(APIView):
         if role not in ('client', 'freelancer', 'both'):
             return Response(
                 {'error': 'Role must be one of: client, freelancer, both.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=400,
             )
-
         user = request.user
         user.role = role
         user.save()
-
         create_role_resources(user, role)
-
         return Response(UserSerializer(user).data)
 
 
-class SubscribeView(APIView):
-    """
-    Subscribe to the Pro plan via M-Pesa (STK push) or Stripe (card).
+# ---------------------------------------------------------------------------
+# Profile Completion — pure calculation (also used by analytics)
+# ---------------------------------------------------------------------------
+def compute_profile_completion(user):
+    role = user.role or 'both'
+    missing = []
 
-    Request body:
-        method: 'mpesa' | 'stripe'
-        phone_number: required only if method == 'mpesa'
+    basic_checks = [
+        (user.first_name, 'First name'),
+        (user.last_name, 'Last name'),
+        (user.email, 'Email'),
+        (user.phone_number, 'Phone number'),
+    ]
 
-    Response:
-        M-Pesa: {status: 'pending', checkout_request_id, amount_kes, exchange_rate}
-        Stripe: {client_secret, intent_id, amount_usd}
-    """
+    if role == 'freelancer':
+        basic_weight, freelancer_weight, client_weight = 10, 15, 0
+    elif role == 'client':
+        basic_weight, freelancer_weight, client_weight = 15, 0, 40
+    else:
+        basic_weight, freelancer_weight, client_weight = 10, 7.5, 30
+
+    score = 0.0
+
+    for val, label in basic_checks:
+        if val:
+            score += basic_weight
+        else:
+            missing.append(label)
+
+    if role in ('freelancer', 'both'):
+        fp = getattr(user, 'freelancer_profile', None)
+        fp_checks = [
+            (fp.title if fp else None, 'Professional title'),
+            (fp.overview if fp else None, 'Overview'),
+            (fp.skills if fp else None, 'Skills'),
+            (fp.portfolio if fp else None, 'Portfolio'),
+        ]
+        for val, label in fp_checks:
+            if val:
+                score += freelancer_weight
+            else:
+                missing.append(label)
+
+    if role in ('client', 'both'):
+        cp = getattr(user, 'client_profile', None)
+        if cp and cp.company_name:
+            score += client_weight
+        else:
+            missing.append('Company name')
+
+    return {
+        'percentage': int(round(score)),
+        'missing_fields': missing,
+    }
+
+
+class ProfileCompletionView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
+    def get(self, request):
+        return Response(compute_profile_completion(request.user))
+
+
+# ---------------------------------------------------------------------------
+# Subscription
+# ---------------------------------------------------------------------------
+class SubscribeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
     PRO_PRICE_USD = Decimal('9.99')
 
     def post(self, request):
@@ -299,7 +365,7 @@ class SubscribeView(APIView):
         if user.has_active_pro_plan():
             return Response(
                 {'error': 'You already have an active Pro plan.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=400,
             )
 
         if method == 'mpesa':
@@ -307,10 +373,7 @@ class SubscribeView(APIView):
         elif method == 'stripe':
             return self._handle_stripe(request, user)
 
-        return Response(
-            {'error': 'Payment method must be "mpesa" or "stripe".'},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+        return Response({'error': 'Payment method must be "mpesa" or "stripe".'}, status=400)
 
     def _handle_mpesa(self, request, user):
         phone = request.data.get('phone_number', '')
@@ -320,10 +383,7 @@ class SubscribeView(APIView):
         elif digits.startswith('7') or digits.startswith('1'):
             digits = '254' + digits
         if not digits.startswith('254') or len(digits) != 12:
-            return Response(
-                {'error': 'Invalid Kenyan phone number. Use 2547XXXXXXXX.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({'error': 'Invalid Kenyan phone number.'}, status=400)
 
         try:
             from wallet.services.exchange import get_usd_to_kes_rate
@@ -334,12 +394,9 @@ class SubscribeView(APIView):
         amount_kes = int(self.PRO_PRICE_USD * rate)
 
         payment = SubscriptionPayment.objects.create(
-            user=user,
-            plan='pro',
-            amount_usd=self.PRO_PRICE_USD,
-            amount_kes=amount_kes,
-            method='mpesa',
-            status='pending',
+            user=user, plan='pro',
+            amount_usd=self.PRO_PRICE_USD, amount_kes=amount_kes,
+            method='mpesa', status='pending',
         )
 
         try:
@@ -348,17 +405,14 @@ class SubscribeView(APIView):
         except Exception as e:
             payment.status = 'failed'
             payment.save()
-            return Response(
-                {'error': f'STK push failed: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return Response({'error': f'STK push failed: {str(e)}'}, status=500)
 
         if result.get('ResponseCode') == '0':
             payment.reference = result.get('CheckoutRequestID', '')
             payment.save()
             return Response({
                 'status': 'pending',
-                'message': 'STK push sent. Enter your M-Pesa PIN to complete the upgrade.',
+                'message': 'STK push sent. Enter your M-Pesa PIN.',
                 'checkout_request_id': result.get('CheckoutRequestID'),
                 'amount_usd': float(self.PRO_PRICE_USD),
                 'amount_kes': amount_kes,
@@ -367,30 +421,21 @@ class SubscribeView(APIView):
 
         payment.status = 'failed'
         payment.save()
-        return Response(
-            {'error': result.get('errorMessage') or result.get('ResponseDescription', 'STK push failed')},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+        return Response({'error': 'STK push failed'}, status=400)
 
     def _handle_stripe(self, request, user):
         try:
             intent = stripe.PaymentIntent.create(
                 amount=int(self.PRO_PRICE_USD * 100),
                 currency='usd',
-                metadata={
-                    'type': 'subscription',
-                    'user_id': user.id,
-                    'plan': 'pro',
-                },
+                metadata={'type': 'subscription', 'user_id': user.id, 'plan': 'pro'},
                 payment_method_types=['card'],
                 receipt_email=user.email,
             )
             SubscriptionPayment.objects.create(
-                user=user,
-                plan='pro',
+                user=user, plan='pro',
                 amount_usd=self.PRO_PRICE_USD,
-                method='stripe',
-                status='pending',
+                method='stripe', status='pending',
                 reference=intent.id,
             )
             return Response({
@@ -399,10 +444,7 @@ class SubscribeView(APIView):
                 'amount_usd': float(self.PRO_PRICE_USD),
             })
         except stripe.error.StripeError as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({'error': str(e)}, status=400)
 
 
 class SubscriptionStatusView(APIView):

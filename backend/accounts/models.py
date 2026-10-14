@@ -28,7 +28,6 @@ class User(AbstractUser):
         return self.email
 
     def has_active_pro_plan(self):
-        """Returns True if the user currently has an active Pro plan."""
         if self.plan != 'pro':
             return False
         if self.plan_expires_at and self.plan_expires_at < timezone.now():
@@ -37,24 +36,30 @@ class User(AbstractUser):
 
 
 class FreelancerProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='freelancer_profile')
-    title = models.CharField(max_length=255)
-    overview = models.TextField()
-    skills = models.JSONField(default=list)
-    portfolio = models.JSONField(default=list)
-    hourly_rate = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name='freelancer_profile'
+    )
+    # These are now optional so get_or_create never fails
+    title = models.CharField(max_length=255, blank=True, default='')
+    overview = models.TextField(blank=True, default='')
+    skills = models.JSONField(default=list, blank=True)
+    portfolio = models.JSONField(default=list, blank=True)
+    hourly_rate = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True
+    )
     availability = models.BooleanField(default=True)
-    profile_video = models.URLField(blank=True)
+    profile_video = models.URLField(blank=True, default='')
 
 
 class ClientProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='client_profile')
-    company_name = models.CharField(max_length=255, blank=True)
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name='client_profile'
+    )
+    company_name = models.CharField(max_length=255, blank=True, default='')
     payment_verified = models.BooleanField(default=False)
 
 
 class SubscriptionPayment(models.Model):
-    """Tracks Pro plan subscription payments via M-Pesa or Stripe."""
     STATUS_CHOICES = (
         ('pending', 'Pending'),
         ('success', 'Success'),
