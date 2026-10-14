@@ -1,13 +1,16 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   FaUser, FaBriefcase, FaBuilding, FaSave, FaCheckCircle,
   FaExclamationCircle,
 } from 'react-icons/fa';
 import api from '../../api/axiosConfig';
+import { setCredentials } from '../../store/authSlice';
 
 const Profile = () => {
+  const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
+  const auth = useSelector((state) => state.auth);
 
   const [profile, setProfile] = useState({
     first_name: '', last_name: '', username: '', email: '',
@@ -17,29 +20,32 @@ const Profile = () => {
     title: '', overview: '', skills: [], portfolio: [],
     hourly_rate: '', availability: true,
   });
-  const [client, setClient] = useState({
-    company_name: '',
-  });
+  const [client, setClient] = useState({ company_name: '' });
   const [skillsInput, setSkillsInput] = useState('');
   const [portfolioInput, setPortfolioInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState({ type: '', text: '' });
 
   useEffect(() => {
     const fetchAll = async () => {
       try {
         const [userRes, freeRes, clientRes] = await Promise.all([
           api.get('accounts/profile/'),
-          api.get('accounts/profile/freelancer/').catch(() => ({ data: { skills: [], portfolio: [] } })),
-          api.get('accounts/profile/client/').catch(() => ({ data: { company_name: '' } })),
+          api.get('accounts/profile/freelancer/').catch(() => ({ data: null })),
+          api.get('accounts/profile/client/').catch(() => ({ data: null })),
         ]);
         setProfile(userRes.data);
-        setFreelancer(freeRes.data);
-        setClient(clientRes.data);
-        setSkillsInput(freeRes.data.skills?.join(', ') || '');
-        setPortfolioInput(freeRes.data.portfolio?.join(', ') || '');
+        if (freeRes.data) {
+          setFreelancer(freeRes.data);
+          setSkillsInput((freeRes.data.skills || []).join(', '));
+          setPortfolioInput((freeRes.data.portfolio || []).join(', '));
+        }
+        if (clientRes.data) {
+          setClient(clientRes.data);
+        }
       } catch {
+        // Fall back to Redux user data if the profile endpoints fail
         if (user) {
           setProfile({
             first_name: user.first_name || '',
@@ -61,24 +67,17 @@ const Profile = () => {
   const showFreelancer = role === 'freelancer' || role === 'both';
   const showClient = role === 'client' || role === 'both';
 
-  // Live completion score matching backend logic
   const completion = useMemo(() => {
     let basicWeight;
     let freeWeight;
     let clientWeight;
 
     if (role === 'freelancer') {
-      basicWeight = 10;
-      freeWeight = 15;
-      clientWeight = 0;
+      basicWeight = 10; freeWeight = 15; clientWeight = 0;
     } else if (role === 'client') {
-      basicWeight = 15;
-      freeWeight = 0;
-      clientWeight = 40;
+      basicWeight = 15; freeWeight = 0; clientWeight = 40;
     } else {
-      basicWeight = 10;
-      freeWeight = 7.5;
-      clientWeight = 30;
+      basicWeight = 10; freeWeight = 7.5; clientWeight = 30;
     }
 
     let score = 0;
@@ -116,25 +115,46 @@ const Profile = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
-    setMessage('');
+    setMessage({ type: '', text: '' });
+
     try {
-      await api.put('accounts/profile/', profile);
+      const userRes = await api.put('accounts/profile/', profile);
 
       if (showFreelancer) {
         await api.put('accounts/profile/freelancer/', {
           ...freelancer,
           skills: skillsInput.split(',').map((s) => s.trim()).filter(Boolean),
           portfolio: portfolioInput.split(',').map((s) => s.trim()).filter(Boolean),
-          hourly_rate: freelancer.hourly_rate || null,
+          hourly_rate: freelancer.hourly_rate === '' ? null : freelancer.hourly_rate,
         });
       }
+
       if (showClient) {
         await api.put('accounts/profile/client/', client);
       }
 
-      setMessage('Profile updated successfully.');
-    } catch {
-      setMessage('Failed to update profile.');
+      if (userRes.data) {
+        dispatch(setCredentials({
+          user: userRes.data,
+          token: auth.token,
+          refresh: auth.refresh,
+        }));
+      }
+
+      setMessage({ type: 'success', text: 'Profile updated successfully.' });
+    } catch (err) {
+      const data = err.response?.data;
+      let text = 'Failed to update profile.';
+      if (typeof data === 'string') {
+        text = data;
+      } else if (data && typeof data === 'object') {
+        const firstKey = Object.keys(data)[0];
+        if (firstKey) {
+          const val = data[firstKey];
+          text = `${firstKey}: ${Array.isArray(val) ? val[0] : val}`;
+        }
+      }
+      setMessage({ type: 'error', text });
     } finally {
       setSaving(false);
     }
@@ -154,7 +174,6 @@ const Profile = () => {
 
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6">
-      {/* Header */}
       <div className="flex items-center gap-5 mb-8">
         <div className="w-20 h-20 rounded-full bg-gradient-to-br from-gold-400 to-gold-700 flex items-center justify-center text-white text-3xl font-bold shadow-lg shrink-0">
           {profile.username?.[0]?.toUpperCase() || 'U'}
@@ -169,21 +188,16 @@ const Profile = () => {
         </div>
       </div>
 
-      {/* Completion Ring */}
       <div className="glass p-5 rounded-2xl shadow-lg mb-8 flex items-center gap-5">
         <div className="relative w-20 h-20 shrink-0">
           <svg className="w-20 h-20 -rotate-90" viewBox="0 0 36 36">
-            <circle
-              cx="18" cy="18" r="15" fill="none" stroke="currentColor"
-              className="text-gold-100 dark:text-gold-900" strokeWidth="3"
-            />
-            <circle
-              cx="18" cy="18" r="15" fill="none" stroke="currentColor"
+            <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor"
+              className="text-gold-100 dark:text-gold-900" strokeWidth="3" />
+            <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor"
               className="text-gold-500 transition-all duration-700"
               strokeWidth="3"
               strokeDasharray={`${(completion / 100) * 94.2} 94.2`}
-              strokeLinecap="round"
-            />
+              strokeLinecap="round" />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
             <span className="text-lg font-bold text-gold-600 dark:text-gold-400">
@@ -203,21 +217,20 @@ const Profile = () => {
         </div>
       </div>
 
-      {message && (
+      {message.text && (
         <div className={`mb-6 p-3 rounded-xl text-sm flex items-center gap-2 ${
-          message.includes('success')
+          message.type === 'success'
             ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
             : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
         }`}>
-          {message.includes('success')
+          {message.type === 'success'
             ? <FaCheckCircle className="shrink-0" />
             : <FaExclamationCircle className="shrink-0" />}
-          {message}
+          {message.text}
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Section 1 - Account Info */}
         <section className="glass p-6 rounded-2xl shadow-lg">
           <div className="flex items-center gap-3 mb-5 pb-4 border-b border-gold-200 dark:border-gold-800">
             <div className="w-9 h-9 rounded-lg bg-gold-100 dark:bg-gold-900/40 flex items-center justify-center">
@@ -266,7 +279,6 @@ const Profile = () => {
           </div>
         </section>
 
-        {/* Section 2 - Freelancer Details */}
         {showFreelancer && (
           <section className="glass p-6 rounded-2xl shadow-lg">
             <div className="flex items-center gap-3 mb-5 pb-4 border-b border-gold-200 dark:border-gold-800">
@@ -316,7 +328,6 @@ const Profile = () => {
           </section>
         )}
 
-        {/* Section 3 - Client Details */}
         {showClient && (
           <section className="glass p-6 rounded-2xl shadow-lg">
             <div className="flex items-center gap-3 mb-5 pb-4 border-b border-gold-200 dark:border-gold-800">
@@ -335,13 +346,12 @@ const Profile = () => {
                 onChange={handleClientChange}
                 placeholder="e.g. Acme Studios Ltd" className={inputClass} />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                If you are an individual, you can leave this blank and enter your name in the "First Name" field above.
+                If you are an individual, you can leave this blank.
               </p>
             </div>
           </section>
         )}
 
-        {/* Save Button */}
         <div className="sticky bottom-4 z-10">
           <button
             type="submit"
