@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { FaSearch, FaPlus } from 'react-icons/fa';
+import { FaSearch, FaPlus, FaTrash, FaCheckCircle, FaExclamationCircle } from 'react-icons/fa';
 import api from '../../api/axiosConfig';
 
 const ProjectList = ({ mine = false }) => {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [deletingId, setDeletingId] = useState(null);
+  const [feedback, setFeedback] = useState({ type: '', text: '' });
   const user = useSelector((s) => s.auth.user);
 
   const isMine = mine;
@@ -15,21 +17,48 @@ const ProjectList = ({ mine = false }) => {
   useEffect(() => {
     let cancelled = false;
 
-    const url = isMine && user?.id ? `projects/?client=${user.id}` : 'projects/';
-
-    api.get(url)
-      .then((res) => {
+    const load = async () => {
+      try {
+        const url = isMine && user?.id ? `projects/?client=${user.id}` : 'projects/';
+        const res = await api.get(url);
         if (!cancelled) {
-          // Handle both paginated and unpaginated responses
           const data = res.data?.results || res.data;
           setProjects(Array.isArray(data) ? data : []);
         }
-      })
-      .catch(() => { if (!cancelled) setProjects([]); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      } catch {
+        if (!cancelled) setProjects([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
 
+    load();
     return () => { cancelled = true; };
   }, [isMine, user]);
+
+  const handleDelete = async (projectId, projectTitle) => {
+    const confirmed = window.confirm(
+      `Delete "${projectTitle}" permanently?\n\nThis cannot be undone. Proposals will also be removed.`
+    );
+    if (!confirmed) return;
+
+    setDeletingId(projectId);
+    setFeedback({ type: '', text: '' });
+
+    try {
+      await api.delete(`projects/${projectId}/`);
+      setProjects((prev) => prev.filter((p) => p.id !== projectId));
+      setFeedback({ type: 'success', text: `"${projectTitle}" deleted successfully.` });
+    } catch (err) {
+      const data = err.response?.data;
+      let msg = 'Failed to delete project.';
+      if (data?.error) msg = data.error;
+      else if (data?.detail) msg = data.detail;
+      setFeedback({ type: 'error', text: msg });
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const filtered = projects.filter((p) =>
     p.title?.toLowerCase().includes(search.toLowerCase()) ||
@@ -89,6 +118,19 @@ const ProjectList = ({ mine = false }) => {
         </div>
       </div>
 
+      {feedback.text && (
+        <div className={`mb-4 p-3 rounded-lg text-sm flex items-center gap-2 ${
+          feedback.type === 'success'
+            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+            : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+        }`}>
+          {feedback.type === 'success'
+            ? <FaCheckCircle className="shrink-0" />
+            : <FaExclamationCircle className="shrink-0" />}
+          {feedback.text}
+        </div>
+      )}
+
       {filtered.length === 0 ? (
         <div className="glass p-8 rounded-2xl text-center text-gray-500 dark:text-gray-400">
           {isMine
@@ -141,12 +183,26 @@ const ProjectList = ({ mine = false }) => {
                 </span>
                 <div className="flex gap-2 flex-wrap">
                   {isMine && (
-                    <Link
-                      to={`/projects/${p.id}/edit`}
-                      className="text-xs border border-gold-600 text-gold-600 px-3 py-1.5 rounded-full hover:bg-gold-50 dark:hover:bg-gold-900/30 transition"
-                    >
-                      Edit
-                    </Link>
+                    <>
+                      <Link
+                        to={`/projects/${p.id}/edit`}
+                        className="text-xs border border-gold-600 text-gold-600 px-3 py-1.5 rounded-full hover:bg-gold-50 dark:hover:bg-gold-900/30 transition"
+                      >
+                        Edit
+                      </Link>
+                      <button
+                        onClick={() => handleDelete(p.id, p.title)}
+                        disabled={deletingId === p.id}
+                        className={`text-xs border px-3 py-1.5 rounded-full transition flex items-center gap-1 ${
+                          deletingId === p.id
+                            ? 'border-gray-300 text-gray-400 cursor-not-allowed'
+                            : 'border-red-500 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
+                        }`}
+                      >
+                        <FaTrash size={10} />
+                        {deletingId === p.id ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </>
                   )}
                   <Link
                     to={isMine ? `/my-projects/${p.id}` : `/projects/${p.id}`}
