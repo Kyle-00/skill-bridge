@@ -23,22 +23,12 @@ from .services.exchange import get_usd_to_kes_rate
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 def expire_stale_pending_transactions(minutes=2):
     cutoff = timezone.now() - timedelta(minutes=minutes)
-    stale = Transaction.objects.filter(
-        status='pending',
-        created_at__lt=cutoff,
-    )
+    stale = Transaction.objects.filter(status='pending', created_at__lt=cutoff)
     count = stale.count()
     if count:
-        stale.update(
-            status='failed',
-            description='Timed out — no callback received from payment provider',
-        )
-        print(f'Auto-expired {count} stale pending transaction(s)')
+        stale.update(status='failed', description='Timed out — no callback received')
     return count
 
 
@@ -46,19 +36,26 @@ def notify_user(recipient, actor, verb, message, target=''):
     try:
         from notifications.models import Notification
         Notification.objects.create(
-            recipient=recipient,
-            actor=actor,
-            verb=verb,
-            message=message,
-            target=target,
+            recipient=recipient, actor=actor, verb=verb,
+            message=message, target=target,
         )
     except Exception as e:
         print(f'Notification failed: {e}')
 
 
-# ---------------------------------------------------------------------------
-# Wallet ViewSet
-# ---------------------------------------------------------------------------
+def activate_pro_subscription(user, duration_days=30):
+    """Helper to upgrade a user to Pro for N days."""
+    user.plan = 'pro'
+    user.plan_expires_at = timezone.now() + timedelta(days=duration_days)
+    user.save(update_fields=['plan', 'plan_expires_at'])
+    notify_user(
+        user, None, 'subscription_activated',
+        'Your Pro plan is now active. Enjoy lower fees, promoted gigs, and priority support!',
+        '/dashboard',
+    )
+    print(f'Activated Pro plan for {user.username} until {user.plan_expires_at}')
+
+
 class WalletViewSet(viewsets.ModelViewSet):
     serializer_class = WalletSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -76,7 +73,6 @@ class WalletViewSet(viewsets.ModelViewSet):
         except (InvalidOperation, TypeError, ValueError):
             return None
 
-    # ---------- BALANCE ----------
     @action(detail=False, methods=['get'])
     def balance(self, request):
         expire_stale_pending_transactions()
@@ -88,18 +84,15 @@ class WalletViewSet(viewsets.ModelViewSet):
             'has_pin': wallet.has_pin(),
         })
 
-    # ---------- PIN ----------
     @action(detail=False, methods=['post'])
     def set_pin(self, request):
         wallet = self._get_wallet(request.user)
         serializer = SetPinSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
         if wallet.has_pin():
             old_pin = serializer.validated_data.get('old_pin', '')
             if not wallet.check_pin(old_pin):
                 return Response({'error': 'Current PIN is incorrect.'}, status=400)
-
         wallet.set_pin(serializer.validated_data['pin'])
         return Response({'status': 'PIN set successfully'})
 
@@ -108,46 +101,29 @@ class WalletViewSet(viewsets.ModelViewSet):
         wallet = self._get_wallet(request.user)
         serializer = ChangePinSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
         if not wallet.check_pin(serializer.validated_data['old_pin']):
             return Response({'error': 'Current PIN is incorrect.'}, status=400)
-
         wallet.set_pin(serializer.validated_data['new_pin'])
         return Response({'status': 'PIN changed successfully'})
 
-    # ---------- DEPOSIT (legacy fallback) ----------
     @action(detail=False, methods=['post'])
     def deposit(self, request):
         amount = self._to_decimal(request.data.get('amount', 0))
         payment_method = request.data.get('payment_method', 'stripe')
-
         if amount is None or amount <= 0:
             return Response({'error': 'Amount must be greater than 0'}, status=400)
-
         wallet = self._get_wallet(request.user)
         tx = Transaction.objects.create(
-            wallet=wallet,
-            transaction_type='deposit',
-            amount=amount,
-            status='success',
+            wallet=wallet, transaction_type='deposit',
+            amount=amount, status='success',
             description=f'Deposit via {payment_method}',
         )
         wallet.balance += amount
         wallet.save()
+        notify_user(request.user, None, 'deposit_received',
+                    f'Deposit of ${amount} added to your wallet', '/wallet')
+        return Response({'status': 'success', 'balance': float(wallet.balance), 'transaction_id': tx.id})
 
-        notify_user(
-            request.user, None, 'deposit_received',
-            f'Deposit of ${amount} added to your wallet',
-            '/wallet',
-        )
-
-        return Response({
-            'status': 'success',
-            'balance': float(wallet.balance),
-            'transaction_id': tx.id,
-        })
-
-    # ---------- WITHDRAW ----------
     @action(detail=False, methods=['post'])
     def withdraw(self, request):
         amount = self._to_decimal(request.data.get('amount', 0))
@@ -156,9 +132,7 @@ class WalletViewSet(viewsets.ModelViewSet):
         bank_name = request.data.get('bank_name', '')
         bank_account = request.data.get('bank_account', '')
         pin = str(request.data.get('pin', ''))
-
         wallet = self._get_wallet(request.user)
-
         if not wallet.has_pin():
             return Response({'error': 'Please set a wallet PIN first.'}, status=400)
         if not wallet.check_pin(pin):
@@ -167,11 +141,9 @@ class WalletViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Amount must be greater than 0'}, status=400)
         if wallet.balance < amount:
             return Response({'error': 'Insufficient balance'}, status=400)
-
         fee_rate = Decimal('0.015') if method == 'mpesa' else Decimal('0.02')
         fee = (amount * fee_rate).quantize(Decimal('0.01'))
         net = amount - fee
-
         description = f'Withdrawal via {method.upper()}'
         if method == 'mpesa' and phone:
             digits = ''.join(filter(str.isdigit, str(phone)))
@@ -182,29 +154,18 @@ class WalletViewSet(viewsets.ModelViewSet):
             description += f' to {digits}'
         elif method == 'bank' and bank_name:
             description += f' to {bank_name}'
-
         with transaction.atomic():
             locked_wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
             if locked_wallet.balance < amount:
                 return Response({'error': 'Insufficient balance'}, status=400)
-
             tx = Transaction.objects.create(
-                wallet=locked_wallet,
-                transaction_type='withdrawal',
-                amount=amount,
-                fee=fee,
-                status='success',
-                description=description,
+                wallet=locked_wallet, transaction_type='withdrawal',
+                amount=amount, fee=fee, status='success', description=description,
             )
             locked_wallet.balance -= amount
             locked_wallet.save()
-
-        notify_user(
-            request.user, None, 'withdrawal_made',
-            f'You withdrew ${amount} to {method.upper()}',
-            '/wallet',
-        )
-
+        notify_user(request.user, None, 'withdrawal_made',
+                    f'You withdrew ${amount} to {method.upper()}', '/wallet')
         return Response({
             'status': 'success',
             'balance': float(locked_wallet.balance),
@@ -212,15 +173,12 @@ class WalletViewSet(viewsets.ModelViewSet):
             'net_amount': float(net),
         })
 
-    # ---------- TRANSFER ----------
     @action(detail=False, methods=['post'])
     def transfer(self, request):
         amount = self._to_decimal(request.data.get('amount', 0))
         to_wallet_id = (request.data.get('to_wallet_id') or '').strip().upper()
         pin = str(request.data.get('pin', ''))
-
         from_wallet = self._get_wallet(request.user)
-
         if not from_wallet.has_pin():
             return Response({'error': 'Please set a wallet PIN first.'}, status=400)
         if not from_wallet.check_pin(pin):
@@ -231,73 +189,50 @@ class WalletViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Recipient wallet ID required'}, status=400)
         if from_wallet.balance < amount:
             return Response({'error': 'Insufficient balance'}, status=400)
-
         try:
             to_wallet = Wallet.objects.get(wallet_id=to_wallet_id)
         except Wallet.DoesNotExist:
             return Response({'error': 'Recipient wallet not found'}, status=404)
-
         if to_wallet.user == request.user:
             return Response({'error': 'Cannot transfer to yourself'}, status=400)
-
         sender_name = request.user.get_full_name() or request.user.username
         recipient_name = to_wallet.user.get_full_name() or to_wallet.user.username
-
         with transaction.atomic():
             from_wallet = Wallet.objects.select_for_update().get(pk=from_wallet.pk)
             to_wallet = Wallet.objects.select_for_update().get(pk=to_wallet.pk)
-
             if from_wallet.balance < amount:
                 return Response({'error': 'Insufficient balance'}, status=400)
-
             from_wallet.balance -= amount
             from_wallet.save()
-
             Transaction.objects.create(
-                wallet=from_wallet,
-                transaction_type='transfer',
-                amount=-amount,
+                wallet=from_wallet, transaction_type='transfer', amount=-amount,
                 status='success',
                 description=f'Transfer to {recipient_name} ({to_wallet.wallet_id})',
                 reference=to_wallet_id,
             )
-
             to_wallet.balance += amount
             to_wallet.save()
-
             Transaction.objects.create(
-                wallet=to_wallet,
-                transaction_type='transfer',
-                amount=amount,
+                wallet=to_wallet, transaction_type='transfer', amount=amount,
                 status='success',
                 description=f'Transfer from {sender_name} ({from_wallet.wallet_id})',
                 reference=from_wallet.wallet_id,
             )
-
-        notify_user(
-            request.user, None, 'transfer_sent',
-            f'You sent ${amount} to {recipient_name}',
-            '/wallet',
-        )
-        notify_user(
-            to_wallet.user, request.user, 'transfer_received',
-            f'{sender_name} sent you ${amount}',
-            '/wallet',
-        )
-
+        notify_user(request.user, None, 'transfer_sent',
+                    f'You sent ${amount} to {recipient_name}', '/wallet')
+        notify_user(to_wallet.user, request.user, 'transfer_received',
+                    f'{sender_name} sent you ${amount}', '/wallet')
         return Response({
             'status': 'success',
             'balance': float(from_wallet.balance),
             'recipient': recipient_name,
         })
 
-    # ---------- LOOKUP ----------
     @action(detail=False, methods=['get'])
     def lookup(self, request):
         wallet_id = (request.query_params.get('wallet_id') or '').strip().upper()
         if not wallet_id:
             return Response({'error': 'wallet_id is required'}, status=400)
-
         try:
             wallet = Wallet.objects.get(wallet_id=wallet_id)
             name = f'{wallet.user.first_name} {wallet.user.last_name}'.strip() or wallet.user.username
@@ -309,7 +244,6 @@ class WalletViewSet(viewsets.ModelViewSet):
         except Wallet.DoesNotExist:
             return Response({'error': 'Wallet not found'}, status=404)
 
-    # ---------- TRANSACTIONS ----------
     @action(detail=False, methods=['get'])
     def transactions(self, request):
         expire_stale_pending_transactions()
@@ -318,9 +252,6 @@ class WalletViewSet(viewsets.ModelViewSet):
         return Response(TransactionSerializer(txs, many=True).data)
 
 
-# ---------------------------------------------------------------------------
-# Exchange rate
-# ---------------------------------------------------------------------------
 class ExchangeRateView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -333,9 +264,6 @@ class ExchangeRateView(APIView):
         })
 
 
-# ---------------------------------------------------------------------------
-# Stripe
-# ---------------------------------------------------------------------------
 class StripeCreateIntentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -345,27 +273,19 @@ class StripeCreateIntentView(APIView):
             amount = float(amount)
         except (TypeError, ValueError):
             return Response({'error': 'Invalid amount'}, status=400)
-
         if amount < 1:
             return Response({'error': 'Minimum is $1.00'}, status=400)
         if amount > 10000:
             return Response({'error': 'Maximum is $10,000'}, status=400)
-
         try:
             intent = stripe.PaymentIntent.create(
                 amount=int(round(amount * 100)),
                 currency='usd',
-                metadata={
-                    'user_id': request.user.id,
-                    'type': 'wallet_deposit',
-                },
+                metadata={'user_id': request.user.id, 'type': 'wallet_deposit'},
                 payment_method_types=['card'],
                 receipt_email=request.user.email,
             )
-            return Response({
-                'client_secret': intent.client_secret,
-                'intent_id': intent.id,
-            })
+            return Response({'client_secret': intent.client_secret, 'intent_id': intent.id})
         except stripe.error.StripeError as e:
             return Response({'error': str(e)}, status=400)
 
@@ -377,7 +297,6 @@ class StripeWebhookView(APIView):
     def post(self, request):
         payload = request.body
         sig_header = request.META.get('HTTP_STRIPE_SIGNATURE')
-
         try:
             event = stripe.Webhook.construct_event(
                 payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
@@ -390,7 +309,6 @@ class StripeWebhookView(APIView):
         if event_type in ('payment_intent.succeeded', 'charge.succeeded'):
             obj = event['data']['object']
             obj_data = obj.to_dict() if hasattr(obj, 'to_dict') else dict(obj)
-
             metadata = obj_data.get('metadata') or {}
             user_id = metadata.get('user_id')
             intent_id = obj_data.get('id')
@@ -412,6 +330,28 @@ class StripeWebhookView(APIView):
             if not user_id:
                 return Response({'received': True, 'note': 'no user_id'})
 
+            # ----- Subscription payment -----
+            if metadata.get('type') == 'subscription':
+                try:
+                    from accounts.models import SubscriptionPayment, User
+                    sub = SubscriptionPayment.objects.filter(reference=intent_id).first()
+                    if sub and sub.status == 'pending':
+                        with transaction.atomic():
+                            sub.status = 'success'
+                            sub.completed_at = timezone.now()
+                            sub.save()
+                            activate_pro_subscription(sub.user)
+                        return Response({'received': True, 'upgraded': True})
+                    if not sub:
+                        user = User.objects.filter(id=user_id).first()
+                        if user:
+                            activate_pro_subscription(user)
+                            return Response({'received': True, 'upgraded': True})
+                except Exception as e:
+                    print(f'Subscription activation failed: {e}')
+                return Response({'received': True})
+
+            # ----- Wallet deposit -----
             if Transaction.objects.filter(reference=intent_id).exists():
                 return Response({'received': True, 'note': 'already processed'})
 
@@ -421,50 +361,35 @@ class StripeWebhookView(APIView):
                 return Response({'received': True, 'note': 'no wallet'})
 
             amount = Decimal(amount_cents) / Decimal(100)
-
             with transaction.atomic():
                 wallet.balance += amount
                 wallet.save()
                 Transaction.objects.create(
-                    wallet=wallet,
-                    transaction_type='deposit',
-                    amount=amount,
-                    status='success',
-                    description='Stripe card deposit',
-                    reference=intent_id,
+                    wallet=wallet, transaction_type='deposit',
+                    amount=amount, status='success',
+                    description='Stripe card deposit', reference=intent_id,
                 )
-
-            notify_user(
-                wallet.user, None, 'deposit_received',
-                f'Deposit of ${amount} added to your wallet',
-                '/wallet',
-            )
-
+            notify_user(wallet.user, None, 'deposit_received',
+                        f'Deposit of ${amount} added to your wallet', '/wallet')
             return Response({'received': True, 'credited': float(amount)})
 
         return Response({'received': True})
 
 
-# ---------------------------------------------------------------------------
-# M-Pesa
-# ---------------------------------------------------------------------------
 class MpesaStkPushView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         amount = request.data.get('amount')
         phone = request.data.get('phone_number')
-
         try:
             amount = float(amount)
         except (TypeError, ValueError):
             return Response({'error': 'Invalid amount'}, status=400)
-
         if amount < 1:
             return Response({'error': 'Minimum is $1.00'}, status=400)
         if not phone:
             return Response({'error': 'Phone number is required'}, status=400)
-
         digits = ''.join(filter(str.isdigit, str(phone)))
         if digits.startswith('0'):
             digits = '254' + digits[1:]
@@ -472,26 +397,20 @@ class MpesaStkPushView(APIView):
             digits = '254' + digits
         if not digits.startswith('254') or len(digits) != 12:
             return Response({'error': 'Invalid Kenyan phone number'}, status=400)
-
         rate = get_usd_to_kes_rate()
         amount_kes = int(Decimal(str(amount)) * rate)
-
         if amount_kes < 1:
             return Response({'error': 'Amount too small'}, status=400)
-
         try:
             from orders.services.mpesa import stk_push
             result = stk_push(digits, amount_kes, f'WALLET{request.user.id}')
         except Exception as e:
             return Response({'error': f'STK push failed: {str(e)}'}, status=500)
-
         if result.get('ResponseCode') == '0':
             wallet, _ = Wallet.objects.get_or_create(user=request.user)
             Transaction.objects.create(
-                wallet=wallet,
-                transaction_type='deposit',
-                amount=Decimal(str(amount)),
-                status='pending',
+                wallet=wallet, transaction_type='deposit',
+                amount=Decimal(str(amount)), status='pending',
                 description=f'M-Pesa deposit (KES {amount_kes} @ {rate})',
                 reference=result.get('CheckoutRequestID', ''),
             )
@@ -499,12 +418,10 @@ class MpesaStkPushView(APIView):
                 'status': 'pending',
                 'message': 'STK push sent. Enter your M-Pesa PIN.',
                 'checkout_request_id': result.get('CheckoutRequestID'),
-                'merchant_request_id': result.get('MerchantRequestID'),
                 'amount_usd': amount,
                 'amount_kes': amount_kes,
                 'exchange_rate': float(rate),
             })
-
         return Response(
             {'error': result.get('errorMessage') or result.get('ResponseDescription', 'STK push failed')},
             status=400,
@@ -525,10 +442,10 @@ class MpesaCallbackView(APIView):
         result_code = stk_callback.get('ResultCode')
         checkout_id = stk_callback.get('CheckoutRequestID')
         result_desc = stk_callback.get('ResultDesc', '')
-
-        print(f'M-Pesa callback: code={result_code} id={checkout_id} desc={result_desc}')
+        print(f'M-Pesa callback: code={result_code} id={checkout_id}')
 
         if result_code == 0 and checkout_id:
+            # ----- Wallet deposit -----
             try:
                 tx = Transaction.objects.get(reference=checkout_id)
                 if tx.status == 'pending':
@@ -538,14 +455,25 @@ class MpesaCallbackView(APIView):
                         wallet = tx.wallet
                         wallet.balance += tx.amount
                         wallet.save()
-                    notify_user(
-                        wallet.user, None, 'deposit_received',
-                        f'Deposit of ${tx.amount} added to your wallet',
-                        '/wallet',
-                    )
-                    print(f'Credited wallet {wallet.wallet_id} with ${tx.amount}')
+                    notify_user(wallet.user, None, 'deposit_received',
+                                f'Deposit of ${tx.amount} added to your wallet', '/wallet')
             except Transaction.DoesNotExist:
-                print(f'No pending transaction with reference {checkout_id}')
+                pass
+
+            # ----- Subscription payment -----
+            try:
+                from accounts.models import SubscriptionPayment
+                sub = SubscriptionPayment.objects.filter(
+                    reference=checkout_id, status='pending'
+                ).first()
+                if sub:
+                    with transaction.atomic():
+                        sub.status = 'success'
+                        sub.completed_at = timezone.now()
+                        sub.save()
+                        activate_pro_subscription(sub.user)
+            except Exception as e:
+                print(f'Subscription activation failed: {e}')
 
         elif result_code != 0:
             try:
@@ -554,6 +482,15 @@ class MpesaCallbackView(APIView):
                 tx.description = f'M-Pesa deposit failed: {result_desc}'
                 tx.save()
             except Transaction.DoesNotExist:
+                pass
+
+            try:
+                from accounts.models import SubscriptionPayment
+                sub = SubscriptionPayment.objects.filter(reference=checkout_id).first()
+                if sub:
+                    sub.status = 'failed'
+                    sub.save()
+            except Exception:
                 pass
 
         return Response({'ResultCode': 0, 'ResultDesc': 'Success'})
